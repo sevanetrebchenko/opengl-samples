@@ -4,8 +4,8 @@
 const float DRAG = -0.2;
 
 struct Particle {
-    vec4 position;
-    vec4 velocity;
+    vec3 position;
+    vec3 velocity;
 };
 
 layout (std140, binding = 1) buffer ParticleSSBO {
@@ -23,21 +23,15 @@ layout (location = 0) out vec4 particleColor;
 void main() {
     Particle particle = ssbo.particles[gl_VertexID];
 
-    vec3 particleVelocity = vec3(particle.velocity);
-    vec3 particlePosition = vec3(particle.position);
-
-    vec3 toCenterOfGravity = centerOfGravity - particlePosition;
+    vec3 toCenterOfGravity = centerOfGravity - particle.position;
     float distance = max(length(toCenterOfGravity), EPSILON);
 
     vec3 acceleration = 300.0 * isActive * isRunning / distance * (toCenterOfGravity / distance);
-    particleVelocity *= mix(1.0, exp(DRAG * dt), isRunning);
+    particle.velocity *= mix(1.0, exp(DRAG * dt), isRunning);
 
     // Euler integration.
-    particlePosition += (dt * particleVelocity + 0.5 * acceleration * dt * dt) * isRunning;
-    particleVelocity += acceleration * dt;
-
-    particle.position = vec4(particlePosition, 1.0f);
-    particle.velocity = vec4(particleVelocity, 1.0f);
+    particle.position += (dt * particle.velocity + 0.5 * acceleration * dt * dt) * isRunning;
+    particle.velocity += acceleration * dt;
 
     ssbo.particles[gl_VertexID] = particle;
 
@@ -46,5 +40,5 @@ void main() {
     float b = 0.7 - r;
 
     particleColor = vec4(r, g, b, 0.15);
-    gl_Position = cameraTransform * particle.position;
+    gl_Position = cameraTransform * vec4(particle.position, 1.0f);
 }
