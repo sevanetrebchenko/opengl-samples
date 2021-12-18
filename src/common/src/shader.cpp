@@ -4,7 +4,76 @@
 
 namespace OpenGL {
 
-    std::string ShaderTypeToString(GLenum shaderType) {
+    Shader::Shader(std::initializer_list<std::pair<std::string, GLenum>> shaderComponents) {
+        if (empty(shaderComponents)) {
+            throw std::runtime_error("LoadShader called with no shader components.");
+        }
+
+        program_ = glCreateProgram();
+        unsigned numShaderComponents = shaderComponents.size();
+        GLuint* shaders = new GLenum[numShaderComponents];
+        unsigned currentShaderIndex = 0;
+
+        //--------------------------------------------------------------------------------------------------------------
+        // SHADER COMPONENT COMPILING
+        //--------------------------------------------------------------------------------------------------------------
+        for (const std::pair<std::string, GLenum>& shaderComponent : shaderComponents) {
+            GLuint shader = CompileShaderComponent(shaderComponent);
+
+            // Shader component successfully compiled.
+            glAttachShader(program_, shader);
+            shaders[currentShaderIndex++] = shader;
+        }
+
+        //--------------------------------------------------------------------------------------------------------------
+        // SHADER PROGRAM LINKING
+        //--------------------------------------------------------------------------------------------------------------
+        glLinkProgram(program_);
+
+        GLint isLinked = 0;
+        glGetProgramiv(program_, GL_LINK_STATUS, &isLinked);
+        if (!isLinked) {
+            // Shader failed to link - get error information from OpenGL.
+            GLint errorMessageLength = 0;
+            glGetProgramiv(program_, GL_INFO_LOG_LENGTH, &errorMessageLength);
+
+            std::vector<GLchar> errorMessageBuffer;
+            errorMessageBuffer.resize(errorMessageLength + 1);
+            glGetProgramInfoLog(program_, errorMessageLength, nullptr, &errorMessageBuffer[0]);
+            std::string errorMessage(errorMessageBuffer.begin(), errorMessageBuffer.end());
+
+            // Program is unnecessary at this point.
+            glDeleteProgram(program_);
+
+            // Delete shader types.
+            for (int i = 0; i < numShaderComponents; ++i) {
+                glDeleteShader(shaders[i]);
+            }
+
+            throw std::runtime_error("Shader failed to link. Provided error information: " + errorMessage);
+        }
+
+        // Shader types are no longer necessary.
+        for (int i = 0; i < numShaderComponents; ++i) {
+            GLuint shaderComponentID = shaders[i];
+            glDetachShader(program_, shaderComponentID);
+            glDeleteShader(shaderComponentID);
+        }
+    }
+
+    Shader::~Shader() {
+        glDeleteProgram(program_);
+    }
+
+    void Shader::Bind() const {
+        glUseProgram(program_);
+    }
+
+    void Shader::Unbind() const {
+        glUseProgram(0);
+    }
+
+    std::string Shader::ShaderTypeToString(GLenum shaderType) const {
         switch(shaderType) {
             case GL_FRAGMENT_SHADER:
                 return "FRAGMENT";
@@ -17,7 +86,7 @@ namespace OpenGL {
         }
     }
 
-    GLuint CompileShaderComponent(const std::pair<std::string, GLenum>& shaderComponent) {
+    GLuint Shader::CompileShaderComponent(const std::pair<std::string, GLenum>& shaderComponent) const {
         std::string shaderFilePath = ConvertToNativeSeparators(shaderComponent.first);
         GLenum shaderType = shaderComponent.second;
 
@@ -64,65 +133,6 @@ namespace OpenGL {
         }
 
         return shader;
-    }
-
-    GLuint LoadShader(std::initializer_list<std::pair<std::string, GLenum>> shaderComponents) {
-        if (empty(shaderComponents)) {
-            throw std::runtime_error("LoadShader called with no shader components.");
-        }
-
-        GLuint shaderProgram = glCreateProgram();
-        unsigned numShaderComponents = shaderComponents.size();
-        GLuint* shaders = new GLenum[numShaderComponents];
-        unsigned currentShaderIndex = 0;
-
-        //--------------------------------------------------------------------------------------------------------------
-        // SHADER COMPONENT COMPILING
-        //--------------------------------------------------------------------------------------------------------------
-        for (const std::pair<std::string, GLenum>& shaderComponent : shaderComponents) {
-            GLuint shader = CompileShaderComponent(shaderComponent);
-
-            // Shader component successfully compiled.
-            glAttachShader(shaderProgram, shader);
-            shaders[currentShaderIndex++] = shader;
-        }
-
-        //--------------------------------------------------------------------------------------------------------------
-        // SHADER PROGRAM LINKING
-        //--------------------------------------------------------------------------------------------------------------
-        glLinkProgram(shaderProgram);
-
-        GLint isLinked = 0;
-        glGetProgramiv(shaderProgram, GL_LINK_STATUS, &isLinked);
-        if (!isLinked) {
-            // Shader failed to link - get error information from OpenGL.
-            GLint errorMessageLength = 0;
-            glGetProgramiv(shaderProgram, GL_INFO_LOG_LENGTH, &errorMessageLength);
-
-            std::vector<GLchar> errorMessageBuffer;
-            errorMessageBuffer.resize(errorMessageLength + 1);
-            glGetProgramInfoLog(shaderProgram, errorMessageLength, nullptr, &errorMessageBuffer[0]);
-            std::string errorMessage(errorMessageBuffer.begin(), errorMessageBuffer.end());
-
-            // Program is unnecessary at this point.
-            glDeleteProgram(shaderProgram);
-
-            // Delete shader types.
-            for (int i = 0; i < numShaderComponents; ++i) {
-                glDeleteShader(shaders[i]);
-            }
-
-            throw std::runtime_error("Shader failed to link. Provided error information: " + errorMessage);
-        }
-
-        // Shader types are no longer necessary.
-        for (int i = 0; i < numShaderComponents; ++i) {
-            GLuint shaderComponentID = shaders[i];
-            glDetachShader(shaderProgram, shaderComponentID);
-            glDeleteShader(shaderComponentID);
-        }
-
-        return shaderProgram;
     }
 
 }

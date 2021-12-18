@@ -20,7 +20,7 @@ int main() {
 
     int width = 1280;
     int height = 720;
-    std::string name = "Particle";
+    std::string name = "GPU-Driven Particles";
 
     GLFWwindow* window = glfwCreateWindow(width, height, name.c_str(), nullptr, nullptr);
     if (!window) {
@@ -51,13 +51,9 @@ int main() {
     glGetIntegerv(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &ssboBlockSize);
     std::cout << "Maximum shader storage block size: " << ssboBlockSize << std::endl;
 
-    // Compile shaders.
-    std::string workingDirectory = std::filesystem::current_path().string();
-    GLuint shader = OpenGL::LoadShader({ std::make_pair("src/samples/particle/assets/shaders/particle.vert", GL_VERTEX_SHADER), std::make_pair("src/samples/particle/assets/shaders/particle.frag", GL_FRAGMENT_SHADER) });
-
     // Allocate particles.
     int numParticles = 10000000;
-    float range = 100.0f;
+    float range = 50.0f;
 
     std::vector<OpenGL::Particle> particles;
     particles.resize(numParticles);
@@ -68,6 +64,7 @@ int main() {
     }
 
     // Construct necessary buffers.
+    // SSBO needs an (empty) VAO to be present for rendering.
     GLuint vao;
     glGenBuffers(1, &vao);
     glGenVertexArrays(1, &vao);
@@ -81,31 +78,143 @@ int main() {
 
     // Setup camera.
     OpenGL::Camera camera(width, height);
-    camera.SetPosition(glm::vec3(0.0f, 0.0f, 5.0f));
+    camera.SetPosition(glm::vec3(0.0f, 0.0f, 25.0f));
     camera.SetTargetPosition(glm::vec3(0.0f));
+
+    glm::vec2 previousCursorPosition;
+    glm::dvec2 cursorPosition;
+    bool initialInput = true;
+
+    int previousPauseKeyState = GLFW_RELEASE;
+
+    glViewport(0, 0, width, height);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glPointSize(1.0f);
 
     // Timestep.
     float current = 0.0f;
     float previous = 0.0f;
     float dt = 0.0f;
 
-    glViewport(0, 0, width, height);
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    glPointSize(1.0f);
+    bool isActive = true;
+    bool isRunning = true;
 
-    // Bind shader uniforms.
-    glUseProgram(shader);
+    // Compile shaders.
+    OpenGL::Shader shader({ std::make_pair("particle/assets/shaders/particle.vert", GL_VERTEX_SHADER), std::make_pair("particle/assets/shaders/particle.frag", GL_FRAGMENT_SHADER) });
+    shader.Bind();
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
     glBindVertexArray(vao);
 
     while ((glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS) && (glfwWindowShouldClose(window) == 0)) {
         glfwPollEvents();
+
+        // Moving camera.
+        float cameraSpeed = 100.0f;
+        const glm::vec3& cameraPosition = camera.GetPosition();
+        const glm::vec3& cameraForwardVector = camera.GetForwardVector();
+        const glm::vec3& cameraUpVector = camera.GetUpVector();
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            camera.SetPosition(cameraPosition + cameraSpeed * cameraForwardVector * dt);
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            camera.SetPosition(cameraPosition - cameraSpeed * cameraForwardVector * dt);
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            camera.SetPosition(cameraPosition - glm::normalize(glm::cross(cameraForwardVector, cameraUpVector)) * cameraSpeed * dt);
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            camera.SetPosition(cameraPosition + glm::normalize(glm::cross(cameraForwardVector, cameraUpVector)) * cameraSpeed * dt);
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+            camera.SetPosition(cameraPosition + cameraSpeed * cameraUpVector * dt);
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
+            camera.SetPosition(cameraPosition - cameraSpeed * cameraUpVector * dt);
+        }
+
+        // Pausing simulation.
+        int currentPauseKeyState = glfwGetKey(window, GLFW_KEY_SPACE);
+        if (previousPauseKeyState == GLFW_PRESS && currentPauseKeyState == GLFW_RELEASE) {
+            isRunning = !isRunning;
+        }
+        previousPauseKeyState = currentPauseKeyState;
+
+        // Mouse input.
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+            glfwGetCursorPos(window, &cursorPosition.x, &cursorPosition.y);
+
+            // FPS camera.
+            if (initialInput) {
+                previousCursorPosition = cursorPosition;
+                initialInput = false;
+            }
+
+            float mouseSensitivity = 0.1f;
+
+            float dx = static_cast<float>(cursorPosition.x - previousCursorPosition.x) * mouseSensitivity;
+            float dy = static_cast<float>(previousCursorPosition.y - cursorPosition.y) * mouseSensitivity; // Flipped.
+
+            previousCursorPosition = cursorPosition;
+
+            float pitch = glm::degrees(camera.GetPitch());
+            float yaw = glm::degrees(camera.GetYaw());
+            float roll = glm::degrees(camera.GetRoll());
+
+            float limit = 89.0f;
+
+            yaw += dx;
+            pitch += dy;
+
+            // Prevent camera forward vector to be parallel to camera up vector (0, 1, 0).
+            if (pitch > limit) {
+                pitch = limit;
+            }
+            if (pitch < -limit) {
+                pitch = -limit;
+            }
+
+            camera.SetEulerAngles(pitch, yaw, roll);
+        }
+        else {
+            initialInput = true;
+        }
+
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+            isActive = true;
+        }
+        else {
+            isActive = false;
+        }
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glUniform1f(glGetUniformLocation(shader, "dt"), dt);
-        glUniform3fv(glGetUniformLocation(shader, "centerOfGravity"), 1, glm::value_ptr(glm::vec3(0.0f)));
-        glUniformMatrix4fv(glGetUniformLocation(shader, "cameraTransform"), 1, GL_FALSE, glm::value_ptr(camera.GetCameraTransform()));
+
+        // Set shader uniforms.
+        if (isActive) {
+            glm::vec3 centerOfGravity = cameraPosition + cameraForwardVector * 25.0f;
+            shader.SetUniform("centerOfGravity", centerOfGravity);
+            shader.SetUniform("isActive", 1.0f);
+        }
+        else {
+            shader.SetUniform("isActive", 0.0f);
+        }
+
+        if (isRunning) {
+            shader.SetUniform("isRunning", 1.0f);
+        }
+        else {
+            shader.SetUniform("isRunning", 0.0f);
+        }
+
+        shader.SetUniform("dt", dt);
+        shader.SetUniform("cameraTransform", camera.GetCameraTransform());
 
         glDrawArrays(GL_POINTS, 0, numParticles);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
         current = (float)glfwGetTime();
         dt = current - previous;
@@ -114,7 +223,7 @@ int main() {
         glfwSwapBuffers(window);
     }
 
-    glUseProgram(0);
+    shader.Unbind();
     glDeleteBuffers(1, &ssbo);
 
     // Shutdown.

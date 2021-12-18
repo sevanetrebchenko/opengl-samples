@@ -22,6 +22,12 @@ namespace OpenGL {
 
             void SetFOVAngle(float fov);
 
+            // Assumes degrees.
+            void SetEulerAngles(const glm::vec3& eulerAngles);
+            void SetEulerAngles(float pitch, float yaw, float roll);
+
+            [[nodiscard]] const glm::vec3& GetPosition() const;
+
             // View * Perspective.
             [[nodiscard]] const glm::mat4& GetCameraTransform();
             [[nodiscard]] const glm::mat4& GetPerspectiveTransform();
@@ -29,6 +35,12 @@ namespace OpenGL {
 
             [[nodiscard]] const glm::vec3& GetForwardVector() const;
             [[nodiscard]] const glm::vec3& GetUpVector() const;
+
+            // Euler angles are stored in radians.
+            [[nodiscard]] const glm::vec3& GetEulerAngles() const;
+            [[nodiscard]] float GetPitch() const; // x
+            [[nodiscard]] float GetYaw() const;   // y
+            [[nodiscard]] float GetRoll() const;  // z
 
             [[nodiscard]] float GetNearPlaneDistance() const;
             [[nodiscard]] float GetFarPlaneDistance() const;
@@ -43,6 +55,8 @@ namespace OpenGL {
             glm::vec3 position_;
             glm::vec3 lookAtDirection_;
             glm::vec3 up_;
+
+            glm::vec3 eulerAngles_;
 
             float fov_;
             float aspectRatio_;

@@ -9,12 +9,12 @@ namespace OpenGL {
                                             position_(0.0f, 0.0f, 0.0f),
                                             lookAtDirection_(0.0f, 0.0f, -1.0f),
                                             up_(0.0f, 1.0f, 0.0f),
+                                            eulerAngles_(0.0f, -M_PI_2, 0.0f),
                                             fov_(75.0),
                                             aspectRatio_((float) width / (float) height),
                                             nearPlaneDistance_(0.01f),
                                             farPlaneDistance_(1000.0f),
                                             isDirty_(true) {
-
     }
 
     Camera::~Camera() {
@@ -26,12 +26,12 @@ namespace OpenGL {
     }
 
     void Camera::SetTargetPosition(const glm::vec3 &position) {
-        lookAtDirection_ = position - position_;
+        lookAtDirection_ = glm::normalize(position - position_);
         isDirty_ = true;
     }
 
     void Camera::SetLookAtDirection(const glm::vec3 &direction) {
-        lookAtDirection_ = direction;
+        lookAtDirection_ = glm::normalize(direction);
         isDirty_ = true;
     }
 
@@ -50,13 +50,41 @@ namespace OpenGL {
         isDirty_ = true;
     }
 
+    void Camera::SetEulerAngles(const glm::vec3 &eulerAngles) {
+        eulerAngles_ = glm::radians(eulerAngles);
+
+        float pitch = eulerAngles_.x;
+        float yaw = eulerAngles_.y;
+        float roll = eulerAngles_.z;
+
+        glm::vec3 forwardVector;
+        forwardVector.x = glm::cos(yaw) * glm::cos(pitch);
+        forwardVector.y = glm::sin(pitch);
+        forwardVector.z = glm::sin(yaw) * glm::cos(pitch);
+
+        // Set forward vector.
+        SetLookAtDirection(forwardVector);
+    }
+
+    void Camera::SetEulerAngles(float pitch, float yaw, float roll) {
+        SetEulerAngles(glm::vec3(pitch, yaw, roll));
+    }
+
+    const glm::vec3 &Camera::GetPosition() const {
+        return position_;
+    }
+
     const glm::mat4 &Camera::GetCameraTransform() {
-        CalculateMatrix();
+        if (isDirty_) {
+            CalculateMatrix();
+        }
         return cameraTransform_;
     }
 
     const glm::mat4 &Camera::GetPerspectiveTransform() {
-        CalculateMatrix();
+        if (isDirty_) {
+            CalculateMatrix();
+        }
         return perspectiveTransform_;
     }
 
@@ -73,6 +101,22 @@ namespace OpenGL {
         return up_;
     }
 
+    const glm::vec3 &Camera::GetEulerAngles() const {
+        return eulerAngles_;
+    }
+
+    float Camera::GetPitch() const {
+        return eulerAngles_.x;
+    }
+
+    float Camera::GetYaw() const {
+        return eulerAngles_.y;
+    }
+
+    float Camera::GetRoll() const {
+        return eulerAngles_.z;
+    }
+
     float Camera::GetNearPlaneDistance() const {
         return nearPlaneDistance_;
     }
@@ -82,12 +126,10 @@ namespace OpenGL {
     }
 
     void Camera::CalculateMatrix() {
-        if (isDirty_) {
-            viewTransform_ = glm::lookAt(position_, position_ + lookAtDirection_, up_);
-            perspectiveTransform_ = glm::perspective(glm::radians(fov_), aspectRatio_, nearPlaneDistance_, farPlaneDistance_);
-            cameraTransform_ = perspectiveTransform_ * viewTransform_;
-            isDirty_ = false;
-        }
+        viewTransform_ = glm::lookAt(position_, position_ + lookAtDirection_, up_);
+        perspectiveTransform_ = glm::perspective(glm::radians(fov_), aspectRatio_, nearPlaneDistance_, farPlaneDistance_);
+        cameraTransform_ = perspectiveTransform_ * viewTransform_;
+        isDirty_ = false;
     }
 
 }
