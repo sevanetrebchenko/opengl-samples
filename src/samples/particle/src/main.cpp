@@ -55,7 +55,7 @@ int main() {
     glViewport(0, 0, width, height);
 
     // Initialize particle data.
-    int numParticles = 1000000;
+    int numParticles = 16000000;
 
     std::vector<OpenGL::Particle> particles;
     particles.resize(numParticles);
