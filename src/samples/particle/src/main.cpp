@@ -12,7 +12,7 @@ int main() {
     }
 
     // Setting up OpenGL properties.
-    glfwWindowHint(GLFW_SAMPLES, 1); // change for anti-aliasing
+    glfwWindowHint(GLFW_SAMPLES, 1);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -74,7 +74,7 @@ int main() {
     glGenBuffers(1, &ssbo);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
     glBufferData(GL_SHADER_STORAGE_BUFFER, particles.size() * sizeof(OpenGL::Particle), particles.data(), GL_STATIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo); // Binding 0.
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo); // Binding 0.
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
     // Timestep.
@@ -208,10 +208,10 @@ int main() {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     glBindVertexArray(0);
 
+    // Shutdown.
     glDeleteBuffers(1, &ssbo);
     glDeleteVertexArrays(1, &vao);
 
-    // Shutdown.
     glfwDestroyWindow(window);
     glfwTerminate();
 }

@@ -8,7 +8,7 @@ struct Particle {
     vec3 velocity;
 };
 
-layout (std140, binding = 1) buffer ParticleSSBO {
+layout (std140, binding = 0) buffer ParticleSSBO {
     Particle particles[];
 } ssbo;
 

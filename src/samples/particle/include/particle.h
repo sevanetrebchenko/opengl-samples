@@ -6,7 +6,7 @@
 
 namespace OpenGL {
 
-    struct alignas(16u) Particle  {
+    struct Particle  {
         // glm::vec4 instead of glm::vec3 for buffer alignment.
         glm::vec4 position;
         glm::vec4 velocity;
