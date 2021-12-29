@@ -10,4 +10,4 @@ add_subdirectory(lib)
 
 # Include samples.
 # add_subdirectory("${PROJECT_SOURCE_DIR}/src/samples/cube")
-add_subdirectory("${PROJECT_SOURCE_DIR}/src/samples/particle")
+add_subdirectory("${PROJECT_SOURCE_DIR}/src/samples/particles")

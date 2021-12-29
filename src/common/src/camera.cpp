@@ -1,5 +1,6 @@
 
 #include "camera.h"
+#include "utility.h"
 
 namespace OpenGL {
 
@@ -9,7 +10,7 @@ namespace OpenGL {
                                             position_(0.0f, 0.0f, 0.0f),
                                             lookAtDirection_(0.0f, 0.0f, -1.0f),
                                             up_(0.0f, 1.0f, 0.0f),
-                                            eulerAngles_(0.0f, -M_PI_2, 0.0f),
+                                            eulerAngles_(0.0f, -PI / 2.0f, 0.0f),
                                             fov_(75.0),
                                             aspectRatio_((float) width / (float) height),
                                             nearPlaneDistance_(0.01f),

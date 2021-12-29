@@ -119,7 +119,7 @@ namespace OpenGL {
 
         program_ = glCreateProgram();
         unsigned numShaderComponents = components.size();
-        GLuint* shaders = new GLenum[numShaderComponents];
+        std::vector<GLuint> shaders(numShaderComponents);
         unsigned currentShaderIndex = 0;
 
         //--------------------------------------------------------------------------------------------------------------
@@ -154,7 +154,7 @@ namespace OpenGL {
             glDeleteProgram(program_);
 
             // Delete shader types.
-            for (int i = 0; i < numShaderComponents; ++i) {
+            for (unsigned i = 0; i < numShaderComponents; ++i) {
                 glDeleteShader(shaders[i]);
             }
 
@@ -162,8 +162,7 @@ namespace OpenGL {
         }
 
         // Shader types are no longer necessary.
-        for (int i = 0; i < numShaderComponents; ++i) {
-            GLuint shaderComponentID = shaders[i];
+        for (GLuint shaderComponentID : shaders) {
             glDetachShader(program_, shaderComponentID);
             glDeleteShader(shaderComponentID);
         }

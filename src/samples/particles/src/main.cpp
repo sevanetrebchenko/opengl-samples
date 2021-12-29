@@ -54,7 +54,7 @@ int main() {
     camera.SetPosition(glm::vec3(0.0f, 0.0f, 25.0f));
     glViewport(0, 0, width, height);
 
-    // Initialize particle data.
+    // Initialize particles data.
     int numParticles = 16000000;
 
     std::vector<OpenGL::Particle> particles;
@@ -83,7 +83,7 @@ int main() {
     float dt = 0.0f;
 
     // Compile shaders.
-    OpenGL::Shader shader { "Particle Shader", { "particle/assets/shaders/particle.vert", "particle/assets/shaders/particle.frag" } };
+    OpenGL::Shader shader { "Particle Shader", { "particles/assets/shaders/particle.vert", "particles/assets/shaders/particle.frag" } };
 
     shader.Bind();
     glBindVertexArray(vao);
@@ -194,7 +194,7 @@ int main() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawArrays(GL_POINTS, 0, numParticles);
 
-        // Necessary if particle data is being read from the SSBO on the CPU after rendering.
+        // Necessary if particles data is being read from the SSBO on the CPU after rendering.
         // glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
         current = (float)glfwGetTime();

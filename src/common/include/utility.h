@@ -4,6 +4,8 @@
 
 #include "pch.h"
 
+#define PI 3.14159265359
+
 namespace OpenGL {
 
     [[nodiscard]] std::string ConvertToNativeSeparators(std::string path);
