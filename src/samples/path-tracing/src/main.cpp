@@ -2,6 +2,8 @@
 #include "pch.h"
 #include "shader.h"
 #include "camera.h"
+#include "object_loader.h"
+#include "triangle.h"
 
 int main() {
     // Initialize GLFW.
@@ -38,6 +40,7 @@ int main() {
     std::cout << "OpenGL Version: " << (const char*)(glGetString(GL_VERSION)) << std::endl;
 
     // Initialize ImGui.
+    std::string imGuiIni = "src/samples/path-tracing/data/imgui_layout.ini";
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
@@ -57,53 +60,72 @@ int main() {
     camera.SetPosition(glm::vec3(0.0f, 0.0f, 25.0f));
     glViewport(0, 0, width, height);
 
-    // Default GL_NEAREST texture filtering option is sufficient.
-    // Position texture.
-    GLuint positionTexture;
-    glGenTextures(1, &positionTexture);
-    glBindTexture(GL_TEXTURE_2D, positionTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    // Initialize models.
+    OpenGL::Mesh bunny = OpenGL::ObjectLoader::Instance().LoadFromFile("src/common/assets/models/bunny.obj");
 
-    // Normal texture.
-    GLuint normalTexture;
-    glGenTextures(1, &normalTexture);
-    glBindTexture(GL_TEXTURE_2D, normalTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    // Break model up into individual triangles.
+    std::size_t numTriangles = bunny.indices.size() / 3;
 
-    // Final output texture.
-    GLuint outputTexture;
-    glGenTextures(1, &outputTexture);
-    glBindTexture(GL_TEXTURE_2D, outputTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    std::vector<OpenGL::Triangle> triangles;
+    triangles.reserve(numTriangles);
 
-    // Depth buffer.
-    GLuint rbo;
-    glGenRenderbuffers(1, &rbo);
-    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
-    glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-    // Initialize custom framebuffer for deferred rendering.
-    GLuint fbo;
-    glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, positionTexture, 0); // Position - 0.
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, normalTexture, 0);   // Normals  - 1.
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, outputTexture, 0);   // Output  - 2.
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
-
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "Failed to initialize custom framebuffer." << std::endl;
-        return 1;
+    for (unsigned i = 0; i < numTriangles; ++i) {
+        triangles.emplace_back(OpenGL::Triangle(bunny.vertices[bunny.indices[i * 3 + 0]],
+                                                bunny.vertices[bunny.indices[i * 3 + 1]],
+                                                bunny.vertices[bunny.indices[i * 3 + 2]]));
     }
+
+    GLuint ubo;
+    glGenBuffers(1, &ubo);
+    glBindBuffer(GL_UNIFORM_BUFFER, ubo);
+    glBufferData(GL_UNIFORM_BUFFER, numTriangles * sizeof(OpenGL::Triangle), triangles.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    // Necessary buffers for a full-screen quad.
+    std::vector<glm::vec3> vertices = {
+        { -1.0f, 1.0f, 0.0f },
+        { -1.0f, -1.0f, 0.0f },
+        { 1.0f, -1.0f, 0.0f },
+        { 1.0f, 1.0f, 0.0f }
+    };
+    std::vector<unsigned> indices = { 0, 1, 2, 0, 2, 3 };
+
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertices[0]), vertices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    GLuint ebo;
+    glGenBuffers(1, &ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(indices[0]), indices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    GLuint vao;
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
+
+    // Attach VBO.
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), nullptr);
+
+    // Attach EBO.
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+
+    glBindVertexArray(0);
 
     // Timestep.
     float current;
     float previous = 0.0f;
     float dt = 0.0f;
+
+    // Compile shaders.
+    OpenGL::Shader shader { "Path Tracing Shader", { "src/samples/path-tracing/assets/shaders/fsq.vert", "src/samples/path-tracing/assets/shaders/path_tracing.frag" } };
+    shader.Bind();
+
+    glBindVertexArray(vao);
 
     while ((glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS) && (glfwWindowShouldClose(window) == 0)) {
         glfwPollEvents();
@@ -181,6 +203,10 @@ int main() {
             initialInput = true;
         }
 
+        // Rendering.
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);
+
         // Start the Dear ImGui frame.
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -190,26 +216,7 @@ int main() {
         dt = current - previous;
         previous = current;
 
-        // Rendering.
-
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-
-        // Geometry pass.
-
-        // Do not write depth from future passes (preserve depth of actual scene, not FSQ).
-        glDisable(GL_DEPTH_TEST);
-
-        // Output pass.
-
-        // Return depth-writing back to normal.
-        glEnable(GL_DEPTH_TEST);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
         // Render ImGui on top of everything.
-        // Enable window docking.
-        ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
-
         // Framework overview.
         if (ImGui::Begin("Overview")) {
             ImGui::Text("Render time:");
@@ -217,25 +224,31 @@ int main() {
         }
         ImGui::End();
 
-        // Deferred rendering output.
-        if (ImGui::Begin("Framebuffer")) {
-            // Ensure proper scene image scaling.
-            float maxWidth = ImGui::GetWindowContentRegionWidth();
-            float aspect = static_cast<float>(width) / static_cast<float>(height);
-            ImVec2 imageSize = ImVec2(maxWidth, maxWidth / aspect);
-
-            ImGui::Image(reinterpret_cast<ImTextureID>(outputTexture), imageSize, ImVec2(0, 1), ImVec2(1, 0));
-        }
-
-        ImGui::End();
-
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // Save ImGui .ini settings.
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.WantSaveIniSettings) {
+            ImGui::SaveIniSettingsToDisk(imGuiIni.c_str());
+
+            // Manually change flag.
+            io.WantSaveIniSettings = false;
+        }
 
         glfwSwapBuffers(window);
     }
 
+    glBindVertexArray(0);
+    shader.Unbind();
+
     // Shutdown.
+    glDeleteVertexArrays(1, &vao);
+    glDeleteBuffers(1, &ebo);
+    glDeleteBuffers(1, &vbo);
+    glDeleteBuffers(1, &ubo);
+
+    ImGui::SaveIniSettingsToDisk(imGuiIni.c_str());
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

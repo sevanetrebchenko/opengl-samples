@@ -14,16 +14,15 @@ namespace OpenGL {
 
         std::vector<glm::vec2> uv;
 
-        // For various rendering effects.
-        std::vector<glm::vec3> faceNormals;
-        std::vector<glm::vec3> vertexNormals;
+        // Uses vertex normals.
+        std::vector<glm::vec3> normals;
     };
 
     class ObjectLoader {
         public:
             static ObjectLoader& Instance();
 
-            Mesh LoadFromFile(const std::string& filename);
+            [[nodiscard]] Mesh LoadFromFile(const std::string& filename);
 
         private:
             ObjectLoader();
