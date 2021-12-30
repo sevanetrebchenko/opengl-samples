@@ -22,13 +22,15 @@ int main() {
 
     GLFWwindow* window = glfwCreateWindow(width, height, "GPU-Driven Particles", nullptr, nullptr);
     if (!window) {
-        throw std::runtime_error("Failed to create GLFW window.");
+        std::cerr << "Failed to create GLFW window." << std::endl;
+        return 1;
     }
 
     // Initialize OpenGL.
     glfwMakeContextCurrent(window);
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        throw std::runtime_error("Failed to initialize Glad (OpenGL).");
+        std::cerr << "Failed to initialize Glad (OpenGL)." << std::endl;
+        return 1;
     }
 
     std::cout << "Sample: GPU-Driven Particles" << std::endl;

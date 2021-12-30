@@ -9,5 +9,5 @@ set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 add_subdirectory(lib)
 
 # Include samples.
-# add_subdirectory("${PROJECT_SOURCE_DIR}/src/samples/cube")
 add_subdirectory("${PROJECT_SOURCE_DIR}/src/samples/particles")
+add_subdirectory("${PROJECT_SOURCE_DIR}/src/samples/path-tracing")

@@ -1,0 +1,10 @@
+
+# Configure project files.
+set(SAMPLE_NAME PathTracing)
+set(SAMPLE_SOURCE
+        "${PROJECT_SOURCE_DIR}/src/samples/path-tracing/src/main.cpp"
+        )
+
+set(SAMPLE_INCLUDE "${PROJECT_SOURCE_DIR}/src/samples/path-tracing/include")
+
+include(setup_project)

@@ -14,7 +14,9 @@ namespace OpenGL {
 
         std::vector<glm::vec2> uv;
 
-        std::vector<glm::vec3> normals;
+        // For various rendering effects.
+        std::vector<glm::vec3> faceNormals;
+        std::vector<glm::vec3> vertexNormals;
     };
 
     class ObjectLoader {

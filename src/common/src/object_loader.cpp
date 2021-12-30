@@ -3,60 +3,60 @@
 
 namespace OpenGL {
 
-    void Mesh::RecalculateNormals() {
-        std::size_t numIndices = indices.size();
-        assert(numIndices % 3 == 0);
-
-        std::vector<std::vector<glm::vec3>> vertexAdjacentFaceNormals;
-        vertexAdjacentFaceNormals.resize(vertices.size());
-
-        // Traverse all triples of indices and compute face normals from each.
-        // Attempt to add each normal to the involved vertex if it hasn't been already.
-        for (int i = 0; i < numIndices; i += 3) {
-            unsigned& index1 = indices[i + 0];
-            unsigned& index2 = indices[i + 1];
-            unsigned& index3 = indices[i + 2];
-            glm::vec3& vertex1 = vertices[index1];
-            glm::vec3& vertex2 = vertices[index2];
-            glm::vec3& vertex3 = vertices[index3];
-
-            // Calculate face normal.
-            glm::vec3 faceNormal = glm::cross(vertex3 - vertex2, vertex1 - vertex2);
-
-            bool duplicateNormal = false;
-            // Attempt to add each normal to the involved vertices.
-            for (unsigned j = 0; j < 3; ++j) {
-                unsigned& index = indices[i + j];
-                // Check if normal was already added to this face's vertices.
-                for (const auto &normal : vertexAdjacentFaceNormals[index]) {
-                    if ((glm::dot(faceNormal, normal) - glm::dot(faceNormal, faceNormal)) > std::numeric_limits<float>::epsilon()) {
-                        duplicateNormal = true;
-                        break;
-                    }
-                }
-
-                if (!duplicateNormal) {
-                    vertexAdjacentFaceNormals[index].emplace_back(faceNormal);
-                }
-            }
-        }
-
-        // Compute normals from precomputed adjacent normal list.
-        int numNormals = vertexAdjacentFaceNormals.size();
-        normals.resize(numNormals);
-
-        // Fill mesh data normal data buffer.
-        for (int i = 0; i < numNormals; ++i) {
-            glm::vec3& vertexNormal = normals[i];
-
-            // Sum all adjacent face normals (without duplicates).
-            for (const glm::vec3& normal : vertexAdjacentFaceNormals[i]) {
-                vertexNormal += normal;
-            }
-
-            vertexNormal = glm::normalize(vertexNormal);
-        }
-    }
+//    void Mesh::RecalculateNormals() {
+//        std::size_t numIndices = indices.size();
+//        assert(numIndices % 3 == 0);
+//
+//        std::vector<std::vector<glm::vec3>> vertexAdjacentFaceNormals;
+//        vertexAdjacentFaceNormals.resize(vertices.size());
+//
+//        // Traverse all triples of indices and compute face normals from each.
+//        // Attempt to add each normal to the involved vertex if it hasn't been already.
+//        for (unsigned i = 0; i < numIndices; i += 3) {
+//            unsigned& index1 = indices[i + 0];
+//            unsigned& index2 = indices[i + 1];
+//            unsigned& index3 = indices[i + 2];
+//            glm::vec3& vertex1 = vertices[index1];
+//            glm::vec3& vertex2 = vertices[index2];
+//            glm::vec3& vertex3 = vertices[index3];
+//
+//            // Calculate face normal.
+//            glm::vec3 faceNormal = glm::cross(vertex3 - vertex2, vertex1 - vertex2);
+//
+//            bool duplicateNormal = false;
+//            // Attempt to add each normal to the involved vertices.
+//            for (unsigned j = 0; j < 3; ++j) {
+//                unsigned& index = indices[i + j];
+//                // Check if normal was already added to this face's vertices.
+//                for (const auto &normal : vertexAdjacentFaceNormals[index]) {
+//                    if ((glm::dot(faceNormal, normal) - glm::dot(faceNormal, faceNormal)) > std::numeric_limits<float>::epsilon()) {
+//                        duplicateNormal = true;
+//                        break;
+//                    }
+//                }
+//
+//                if (!duplicateNormal) {
+//                    vertexAdjacentFaceNormals[index].emplace_back(faceNormal);
+//                }
+//            }
+//        }
+//
+//        // Compute normals from precomputed adjacent normal list.
+//        int numNormals = vertexAdjacentFaceNormals.size();
+//        normals.resize(numNormals);
+//
+//        // Fill mesh data normal data buffer.
+//        for (int i = 0; i < numNormals; ++i) {
+//            glm::vec3& vertexNormal = normals[i];
+//
+//            // Sum all adjacent face normals (without duplicates).
+//            for (const glm::vec3& normal : vertexAdjacentFaceNormals[i]) {
+//                vertexNormal += normal;
+//            }
+//
+//            vertexNormal = glm::normalize(vertexNormal);
+//        }
+//    }
 
     ObjectLoader &ObjectLoader::Instance() {
         static ObjectLoader loader;
@@ -142,7 +142,7 @@ namespace OpenGL {
         mesh.indices = indices;
         mesh.uv = uv;
 
-        mesh.RecalculateNormals();
+//        mesh.RecalculateNormals();
 
         loadedMeshes_[filename] = mesh;
         return mesh;
