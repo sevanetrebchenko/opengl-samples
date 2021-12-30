@@ -37,6 +37,21 @@ int main() {
     std::cout << "Renderer: " << (const char*)(glGetString(GL_RENDERER)) << std::endl;
     std::cout << "OpenGL Version: " << (const char*)(glGetString(GL_VERSION)) << std::endl;
 
+    // Initialize ImGui.
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+
+    ImGui::StyleColorsDark();
+
+    // Initialize ImGui Flags.
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+    // Setup Platform/Renderer backend.
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 130");
+
     // Initialize camera.
     OpenGL::Camera camera { width, height };
     camera.SetPosition(glm::vec3(0.0f, 0.0f, 25.0f));
@@ -57,6 +72,13 @@ int main() {
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glBindTexture(GL_TEXTURE_2D, 0);
 
+    // Final output texture.
+    GLuint outputTexture;
+    glGenTextures(1, &outputTexture);
+    glBindTexture(GL_TEXTURE_2D, outputTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
     // Depth buffer.
     GLuint rbo;
     glGenRenderbuffers(1, &rbo);
@@ -70,10 +92,11 @@ int main() {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, positionTexture, 0); // Position - 0.
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, normalTexture, 0);   // Normals  - 1.
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, outputTexture, 0);   // Output  - 2.
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "Incorrectly configured framebuffer." << std::endl;
+        std::cerr << "Failed to initialize custom framebuffer." << std::endl;
         return 1;
     }
 
@@ -158,15 +181,65 @@ int main() {
             initialInput = true;
         }
 
+        // Start the Dear ImGui frame.
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
         current = (float)glfwGetTime();
         dt = current - previous;
         previous = current;
 
+        // Rendering.
+
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+        // Geometry pass.
+
+        // Do not write depth from future passes (preserve depth of actual scene, not FSQ).
+        glDisable(GL_DEPTH_TEST);
+
+        // Output pass.
+
+        // Return depth-writing back to normal.
+        glEnable(GL_DEPTH_TEST);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // Render ImGui on top of everything.
+        // Enable window docking.
+        ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
+
+        // Framework overview.
+        if (ImGui::Begin("Overview")) {
+            ImGui::Text("Render time:");
+            ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        }
+        ImGui::End();
+
+        // Deferred rendering output.
+        if (ImGui::Begin("Framebuffer")) {
+            // Ensure proper scene image scaling.
+            float maxWidth = ImGui::GetWindowContentRegionWidth();
+            float aspect = static_cast<float>(width) / static_cast<float>(height);
+            ImVec2 imageSize = ImVec2(maxWidth, maxWidth / aspect);
+
+            ImGui::Image(reinterpret_cast<ImTextureID>(outputTexture), imageSize, ImVec2(0, 1), ImVec2(1, 0));
+        }
+
+        ImGui::End();
+
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
         glfwSwapBuffers(window);
     }
 
-
     // Shutdown.
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
     glfwDestroyWindow(window);
     glfwTerminate();
 }
