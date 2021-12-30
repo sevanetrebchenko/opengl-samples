@@ -77,6 +77,95 @@ int main() {
         return 1;
     }
 
+    // Timestep.
+    float current;
+    float previous = 0.0f;
+    float dt = 0.0f;
+
+    while ((glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS) && (glfwWindowShouldClose(window) == 0)) {
+        glfwPollEvents();
+
+        // Moving camera.
+        static const float cameraSpeed = 100.0f;
+        const glm::vec3& cameraPosition = camera.GetPosition();
+        const glm::vec3& cameraForwardVector = camera.GetForwardVector();
+        const glm::vec3& cameraUpVector = camera.GetUpVector();
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            camera.SetPosition(cameraPosition + cameraSpeed * cameraForwardVector * dt);
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            camera.SetPosition(cameraPosition - cameraSpeed * cameraForwardVector * dt);
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            camera.SetPosition(cameraPosition - glm::normalize(glm::cross(cameraForwardVector, cameraUpVector)) * cameraSpeed * dt);
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            camera.SetPosition(cameraPosition + glm::normalize(glm::cross(cameraForwardVector, cameraUpVector)) * cameraSpeed * dt);
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+            camera.SetPosition(cameraPosition + cameraSpeed * cameraUpVector * dt);
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
+            camera.SetPosition(cameraPosition - cameraSpeed * cameraUpVector * dt);
+        }
+
+        // Mouse input.
+        static glm::vec2 previousCursorPosition;
+        static bool initialInput = true;
+
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+            glm::dvec2 cursorPosition;
+            glfwGetCursorPos(window, &cursorPosition.x, &cursorPosition.y);
+
+            // FPS camera.
+            if (initialInput) {
+                previousCursorPosition = cursorPosition;
+                initialInput = false;
+            }
+
+            float mouseSensitivity = 0.1f;
+
+            float dx = static_cast<float>(cursorPosition.x - previousCursorPosition.x) * mouseSensitivity;
+            float dy = static_cast<float>(previousCursorPosition.y - cursorPosition.y) * mouseSensitivity; // Flipped.
+
+            previousCursorPosition = cursorPosition;
+
+            float pitch = glm::degrees(camera.GetPitch());
+            float yaw = glm::degrees(camera.GetYaw());
+            float roll = glm::degrees(camera.GetRoll());
+
+            float limit = 89.0f;
+
+            yaw += dx;
+            pitch += dy;
+
+            // Prevent camera forward vector to be parallel to camera up vector (0, 1, 0).
+            if (pitch > limit) {
+                pitch = limit;
+            }
+            if (pitch < -limit) {
+                pitch = -limit;
+            }
+
+            camera.SetEulerAngles(pitch, yaw, roll);
+        }
+        else {
+            initialInput = true;
+        }
+
+        current = (float)glfwGetTime();
+        dt = current - previous;
+        previous = current;
+
+        glfwSwapBuffers(window);
+    }
+
+
     // Shutdown.
     glfwDestroyWindow(window);
     glfwTerminate();

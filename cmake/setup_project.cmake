@@ -45,6 +45,9 @@ target_link_libraries(${SAMPLE_NAME} glm)
 message(STATUS "Linking STB to project.")
 target_link_libraries(${SAMPLE_NAME} stb)
 
-# tinyobjloaders.
+# tinyobjloader.
 message(STATUS "Linking tinyobjloader to project.")
 target_link_libraries(${SAMPLE_NAME} tinyobjloader)
+
+message(STATUS "Linking ImGui to project.")
+target_link_libraries(${SAMPLE_NAME} imgui)

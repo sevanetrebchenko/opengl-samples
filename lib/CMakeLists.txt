@@ -20,6 +20,10 @@ add_subdirectory(glm)
 message(STATUS "Building STB.")
 add_subdirectory(stb)
 
+# Build ImGui.
+message(STATUS "Building ImGui.")
+include(imgui_setup)
+
 # Build tinyobjloader.
 message(STATUS "Building tinyobjloader.")
 add_subdirectory(tinyobjloader)
