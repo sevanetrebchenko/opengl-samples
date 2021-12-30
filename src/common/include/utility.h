@@ -6,12 +6,13 @@
 
 #define PI 3.14159265359
 
-namespace OpenGL {
+namespace Utilities {
 
     [[nodiscard]] std::string ConvertToNativeSeparators(std::string path);
     [[nodiscard]] std::string GetDirectory(std::string path);
     [[nodiscard]] std::string GetAssetName(std::string path);
     [[nodiscard]] std::string GetAssetExtension(std::string path);
+    [[nodiscard]] std::vector<std::string> GetFiles(std::string path);
 
 }
 

@@ -1,7 +1,7 @@
 
 #include "utility.h"
 
-namespace OpenGL {
+namespace Utilities {
 
     [[nodiscard]] char GetSeparator() {
         #ifdef _WIN32
@@ -64,6 +64,23 @@ namespace OpenGL {
         }
 
         return path;
+    }
+
+    std::vector<std::string> GetFiles(std::string path) {
+        path = ConvertToNativeSeparators(path);
+
+        std::filesystem::path directory { path };
+        if (std::filesystem::is_directory(directory)) {
+            std::vector<std::string> filesInDirectory;
+
+            for (auto& file : std::filesystem::directory_iterator(directory)) {
+                filesInDirectory.push_back(file.path().string());
+            }
+
+            return filesInDirectory;
+        }
+
+        throw std::runtime_error("Provided directory does not exist.");
     }
 
 }

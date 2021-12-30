@@ -12,7 +12,7 @@ namespace OpenGL {
         std::vector<ShaderComponent> components;
 
         for (const std::string& component : shaderComponents) {
-            GLenum shaderType = ShaderTypeFromExtension(GetAssetExtension(component));
+            GLenum shaderType = ShaderTypeFromExtension(Utilities::GetAssetExtension(component));
             components.emplace_back(ShaderComponent(component, shaderType));
         }
 
@@ -45,7 +45,7 @@ namespace OpenGL {
     }
 
     GLuint Shader::CompileShaderComponent(const std::pair<std::string, GLenum>& shaderComponent) const {
-        std::string shaderFilePath = ConvertToNativeSeparators(shaderComponent.first);
+        std::string shaderFilePath = Utilities::ConvertToNativeSeparators(shaderComponent.first);
         GLenum shaderType = shaderComponent.second;
 
         // Read in shader source.

@@ -1,5 +1,6 @@
 
 #include "pch.h"
+#include "utility.h"
 #include "shader.h"
 #include "camera.h"
 #include "object_loader.h"
@@ -40,7 +41,6 @@ int main() {
     std::cout << "OpenGL Version: " << (const char*)(glGetString(GL_VERSION)) << std::endl;
 
     // Initialize ImGui.
-    std::string imGuiIni = "src/samples/path-tracing/data/imgui_layout.ini";
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
@@ -50,6 +50,25 @@ int main() {
     // Initialize ImGui Flags.
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+    // Attempt to load ImGui .ini configuration.
+    // Find imgui_layout.ini file inside 'data' subdirectory for this sample.
+    bool foundIni = false;
+
+    for (const std::string& file : Utilities::GetFiles("src/samples/path-tracing/data")) {
+        if (Utilities::GetAssetName(file) == "imgui_layout" && Utilities::GetAssetExtension(file) == "ini") {
+            foundIni = true;
+            break;
+        }
+    }
+
+    std::string imGuiIni = "src/samples/path-tracing/data/imgui_layout.ini";
+
+    if (foundIni) {
+        ImGui::LoadIniSettingsFromDisk(imGuiIni.c_str());
+    }
+
+    io.IniFilename = nullptr; // Enable manual saving.
 
     // Setup Platform/Renderer backend.
     ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -122,7 +141,8 @@ int main() {
     float dt = 0.0f;
 
     // Compile shaders.
-    OpenGL::Shader shader { "Path Tracing Shader", { "src/samples/path-tracing/assets/shaders/fsq.vert", "src/samples/path-tracing/assets/shaders/path_tracing.frag" } };
+    OpenGL::Shader shader { "Path Tracing Shader", { "src/samples/path-tracing/assets/shaders/fsq.vert",
+                                                     "src/samples/path-tracing/assets/shaders/path_tracing.frag" } };
     shader.Bind();
 
     glBindVertexArray(vao);
