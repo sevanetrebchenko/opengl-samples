@@ -43,6 +43,7 @@ namespace OpenGL {
     }
 
     const glm::mat4 &Transform::GetTransform() {
+        CalculateMatrix();
         return transform_;
     }
 
@@ -56,6 +57,10 @@ namespace OpenGL {
 
     const glm::vec3 &Transform::GetRotation() const {
         return rotation_;
+    }
+
+    bool Transform::IsDirty() const {
+        return isDirty_;
     }
 
     void Transform::CalculateMatrix() {

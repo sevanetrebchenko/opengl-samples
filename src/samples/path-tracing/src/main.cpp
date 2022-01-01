@@ -2,9 +2,11 @@
 #include "pch.h"
 #include "utility.h"
 #include "shader.h"
+#include "transform.h"
 #include "camera.h"
 #include "object_loader.h"
 #include "triangle.h"
+#include "model.h"
 
 int main() {
     // Initialize GLFW.
@@ -80,25 +82,22 @@ int main() {
     glViewport(0, 0, width, height);
 
     // Initialize models.
-    OpenGL::Mesh bunny = OpenGL::ObjectLoader::Instance().LoadFromFile("src/common/assets/models/bunny.obj");
+    std::vector<OpenGL::Model> models;
+    models.emplace_back(OpenGL::ObjectLoader::Instance().LoadFromFile("src/common/assets/models/bunny.obj"));
 
-    // Break model up into individual triangles.
-    std::size_t numTriangles = bunny.indices.size() / 3;
+    GLuint ssbo;
+    glGenBuffers(1, &ssbo);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo); // Binding 1.
 
-    std::vector<OpenGL::Triangle> triangles;
-    triangles.reserve(numTriangles);
-
-    for (unsigned i = 0; i < numTriangles; ++i) {
-        triangles.emplace_back(OpenGL::Triangle(bunny.vertices[bunny.indices[i * 3 + 0]],
-                                                bunny.vertices[bunny.indices[i * 3 + 1]],
-                                                bunny.vertices[bunny.indices[i * 3 + 2]]));
+    // Set initial buffer data (size only).
+    std::size_t numTotalBytes = 0;
+    for (const OpenGL::Model& model : models) {
+        numTotalBytes += model.triangles.capacity() * sizeof(OpenGL::Triangle); // No triangles exist yet, use capacity.
     }
 
-    GLuint ubo;
-    glGenBuffers(1, &ubo);
-    glBindBuffer(GL_UNIFORM_BUFFER, ubo);
-    glBufferData(GL_UNIFORM_BUFFER, numTriangles * sizeof(OpenGL::Triangle), triangles.data(), GL_STATIC_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, numTotalBytes, nullptr, GL_STATIC_DRAW);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
     // Necessary buffers for a full-screen quad.
     std::vector<glm::vec3> vertices = {
@@ -146,6 +145,7 @@ int main() {
     shader.Bind();
 
     glBindVertexArray(vao);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
 
     while ((glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS) && (glfwWindowShouldClose(window) == 0)) {
         glfwPollEvents();
@@ -223,6 +223,21 @@ int main() {
             initialInput = true;
         }
 
+        // Update models.
+        std::size_t bufferOffset = 0;
+        glm::mat4 cameraTransform = camera.GetCameraTransform();
+
+        for (OpenGL::Model& model : models) {
+            std::size_t numBytes = static_cast<long>(model.triangles.size() * sizeof(OpenGL::Triangle));
+
+            if (model.IsDirty()) {
+                model.Recalculate(cameraTransform);
+                glBufferSubData(GL_SHADER_STORAGE_BUFFER, bufferOffset, numBytes, model.triangles.data());
+            }
+
+            bufferOffset += numBytes;
+        }
+
         // Rendering.
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);
@@ -259,6 +274,7 @@ int main() {
         glfwSwapBuffers(window);
     }
 
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     glBindVertexArray(0);
     shader.Unbind();
 
@@ -266,7 +282,7 @@ int main() {
     glDeleteVertexArrays(1, &vao);
     glDeleteBuffers(1, &ebo);
     glDeleteBuffers(1, &vbo);
-    glDeleteBuffers(1, &ubo);
+    glDeleteBuffers(1, &ssbo);
 
     ImGui::SaveIniSettingsToDisk(imGuiIni.c_str());
     ImGui_ImplOpenGL3_Shutdown();

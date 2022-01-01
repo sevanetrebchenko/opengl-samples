@@ -26,6 +26,8 @@ namespace OpenGL {
             [[nodiscard]] const glm::vec3& GetScale() const;
             [[nodiscard]] const glm::vec3& GetRotation() const;
 
+            [[nodiscard]] bool IsDirty() const;
+
         private:
             void CalculateMatrix();
 
