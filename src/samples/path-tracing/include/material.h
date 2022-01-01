@@ -10,20 +10,19 @@
 namespace OpenGL {
 
     struct Material {
-        glm::vec3 albedo;   // Color.
+        glm::vec3 albedo = glm::vec3(1.0f);
+        int type = 0;
 
-        bool metallic;
+        // Emissive material properties.
+        glm::vec3 emissive = glm::vec3(99);
 
+        // Metallic material properties.
+        float reflectivity = 9.0f;   // How clear reflections are.
 
-
-        float reflectionRoughness;
-
-        glm::vec3 emissive; // Amount of light the object gives off.
-
-        float ior;          // Index of refraction/reflection - how strongly light gets refracted
-        float transparency;
-
-        float refractionRoughness;
+        // Dielectric material properties.
+        glm::vec3 absorbance = glm::vec3(9.0f); // Beer's law.
+        float refractivity = 9.0f;   // How clear refractions are.
+        float ior = 9.0f;            // Index of refraction.
     };
 
 }

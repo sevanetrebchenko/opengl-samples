@@ -7,6 +7,7 @@
 #include "object_loader.h"
 #include "triangle.h"
 #include "model.h"
+#include "primitives.h"
 
 int main() {
     // Initialize GLFW.
@@ -78,25 +79,85 @@ int main() {
 
     // Initialize camera.
     OpenGL::Camera camera { width, height };
-    camera.SetPosition(glm::vec3(0.0f, 0.0f, 25.0f));
+    camera.SetPosition(glm::vec3(0.0f, 0.0f, 5.0f));
     glViewport(0, 0, width, height);
 
+    // Initialize skybox.
+    // https://learnopengl.com/Advanced-OpenGL/Cubemaps
+    // Cubemap order:
+    // GL_TEXTURE_CUBE_MAP_POSITIVE_X - Right
+    // GL_TEXTURE_CUBE_MAP_NEGATIVE_X - Left
+    // GL_TEXTURE_CUBE_MAP_POSITIVE_Y - Top
+    // GL_TEXTURE_CUBE_MAP_NEGATIVE_Y - Bottom
+    // GL_TEXTURE_CUBE_MAP_POSITIVE_Z - Back
+    // GL_TEXTURE_CUBE_MAP_NEGATIVE_Z - Front
+    std::vector<std::string> textureFaces = {
+        "src/samples/path-tracing/assets/textures/skybox/pos_x.png",
+        "src/samples/path-tracing/assets/textures/skybox/neg_x.png",
+        "src/samples/path-tracing/assets/textures/skybox/pos_y.png",
+        "src/samples/path-tracing/assets/textures/skybox/neg_y.png",
+        "src/samples/path-tracing/assets/textures/skybox/pos_z.png",
+        "src/samples/path-tracing/assets/textures/skybox/neg_z.png"
+    };
+
+    GLuint skybox;
+    glGenTextures(1, &skybox);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, skybox);
+
+    // Load skybox faces into texture.
+    unsigned char* textureData;
+    int textureWidth;
+    int textureHeight;
+    int textureChannels;
+
+    for (unsigned i = 0; i < textureFaces.size(); ++i) {
+        textureData = stbi_load(textureFaces[i].c_str(), &textureWidth, &textureHeight, &textureChannels, 0);
+
+        if (textureData) {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, textureWidth, textureHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, textureData);
+            stbi_image_free(textureData);
+        }
+        else {
+            std::cerr << "Failed to load skybox texture: " << textureFaces[i] << std::endl;
+            stbi_image_free(textureData);
+            return 1;
+        }
+    }
+
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
     // Initialize models.
-    std::vector<OpenGL::Model> models;
-    models.emplace_back(OpenGL::ObjectLoader::Instance().LoadFromFile("src/common/assets/models/bunny.obj"));
+//    std::vector<OpenGL::Model> models;
+//    models.emplace_back(OpenGL::ObjectLoader::Instance().LoadFromFile("src/common/assets/models/bunny.obj"));
+
+    std::vector<OpenGL::Sphere> spheres(256);
 
     GLuint ssbo;
     glGenBuffers(1, &ssbo);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo); // Binding 1.
+    glBufferData(GL_SHADER_STORAGE_BUFFER, 256 * sizeof(OpenGL::Sphere), nullptr, GL_STATIC_DRAW);
 
-    // Set initial buffer data (size only).
-    std::size_t numTotalBytes = 0;
-    for (const OpenGL::Model& model : models) {
-        numTotalBytes += model.triangles.capacity() * sizeof(OpenGL::Triangle); // No triangles exist yet, use capacity.
+    std::size_t offset = 0;
+
+    // Set data.
+    // numSpheres.
+    int numSpheres = 1;
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numSpheres);
+    offset += sizeof(glm::vec4);
+
+    for (OpenGL::Sphere& sphere : spheres) {
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::Sphere), &sphere);
+
+//        // Each sphere needs 3 floats worth of padding.
+//        offset += sizeof(OpenGL::Sphere) + sizeof(float) * 3;
     }
 
-    glBufferData(GL_SHADER_STORAGE_BUFFER, numTotalBytes, nullptr, GL_STATIC_DRAW);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
     // Necessary buffers for a full-screen quad.
@@ -147,11 +208,15 @@ int main() {
     glBindVertexArray(vao);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
 
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, skybox);
+    shader.SetUniform("skybox", 0);
+
     while ((glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS) && (glfwWindowShouldClose(window) == 0)) {
         glfwPollEvents();
 
         // Moving camera.
-        static const float cameraSpeed = 100.0f;
+        static const float cameraSpeed = 10.0f;
         const glm::vec3& cameraPosition = camera.GetPosition();
         const glm::vec3& cameraForwardVector = camera.GetForwardVector();
         const glm::vec3& cameraUpVector = camera.GetUpVector();
@@ -227,16 +292,24 @@ int main() {
         std::size_t bufferOffset = 0;
         glm::mat4 cameraTransform = camera.GetCameraTransform();
 
-        for (OpenGL::Model& model : models) {
-            std::size_t numBytes = static_cast<long>(model.triangles.size() * sizeof(OpenGL::Triangle));
+//        for (OpenGL::Model& model : models) {
+//            std::size_t numBytes = static_cast<long>(model.triangles.size() * sizeof(OpenGL::Triangle));
+//
+//            if (model.IsDirty()) {
+//                model.Recalculate(cameraTransform);
+//                glBufferSubData(GL_SHADER_STORAGE_BUFFER, bufferOffset, numBytes, model.triangles.data());
+//            }
+//
+//            bufferOffset += numBytes;
+//        }
 
-            if (model.IsDirty()) {
-                model.Recalculate(cameraTransform);
-                glBufferSubData(GL_SHADER_STORAGE_BUFFER, bufferOffset, numBytes, model.triangles.data());
-            }
-
-            bufferOffset += numBytes;
-        }
+        shader.SetUniform("cameraPosition", camera.GetPosition());
+        shader.SetUniform("inverseProjectionMatrix", glm::inverse(camera.GetPerspectiveTransform()));
+        shader.SetUniform("inverseViewMatrix", glm::inverse(camera.GetViewTransform()));
+        shader.SetUniform("imageResolution", glm::vec2(width, height));
+        shader.SetUniform("dt", dt);
+        shader.SetUniform("samplesPerPixel", 4);
+        shader.SetUniform("numRayBounces", 1);
 
         // Rendering.
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

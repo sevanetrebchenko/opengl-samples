@@ -9,7 +9,6 @@
 #define LAMBERTIAN 0
 #define METALLIC   1
 #define DIELECTRIC 2
-#define ISOTROPIC  3
 #define EMISSIVE   4
 
 struct Material {
@@ -26,9 +25,6 @@ struct Material {
     vec3 absorbance;    // Beer's law.
     float refractivity; // How clear refractions are.
     float ior;          // Index of refraction.
-
-    // Isotropic material properties.
-    float density;      // Density of medium.
 };
 
 struct Sphere {
@@ -78,14 +74,11 @@ vec3 GetLocalVector(OrthonormalBasis basis, vec3 vector) {
     return vector.x * basis.axes[0] + vector.y * basis.axes[1] + vector.z * basis.axes[2];
 }
 
-layout (binding = 1) uniform samplerCube skybox;
+uniform samplerCube skybox;
 
-layout (std140, binding = 1) buffer ObjectData {
+layout (std140, binding = 1) readonly buffer ObjectData {
     int numSpheres;
     Sphere spheres[256];
-
-    int numAABBs;
-    AABB aabbs[256];
 } objectData;
 
 uniform mat4 inverseProjectionMatrix;
@@ -106,15 +99,16 @@ uint seed;
 
 // Random utility functions.
 
-uint PCGHash(inout uint s) {
-    s = s * 747796405u + 2891336453u;
-    uint word = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+uint PCGHash() {
+    uint state = seed;
+    seed = seed * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
     return (word >> 22u) ^ word;
 }
 
 // Returns pseudo-random float on the domain [min, max].
 float RandomFloat(float min, float max) {
-    float base = float(PCGHash(seed)) / 43765289.1f;
+    float base = float(PCGHash()) / 4294967296.0;
     return min + base * (max - min);
 }
 
@@ -162,7 +156,7 @@ bool Intersects(Ray ray, Sphere sphere, float tMin, float tMax, out HitRecord hi
     vec3 sphereToRayOrigin = ray.origin - sphere.position;
 
     float a = dot(ray.direction, ray.direction);
-    float b = dot(sphereToRayOrigin, ray.direction);
+    float b = 2.0f * dot(sphereToRayOrigin, ray.direction);
     float c = dot(sphereToRayOrigin, sphereToRayOrigin) - (sphere.radius * sphere.radius);
 
     float discriminant = (b * b - 4.0f * a * c);
@@ -172,11 +166,13 @@ bool Intersects(Ray ray, Sphere sphere, float tMin, float tMax, out HitRecord hi
     }
 
     float sqrtDiscriminant = sqrt(discriminant);
-    float root = (-b - sqrtDiscriminant) / (2.0f * a);
+    float denominator = 2.0f / a;
+
+    float root = (-b - sqrtDiscriminant) * denominator;
 
     // Find the nearest root that lies in the acceptable range.
     if (root < tMin || root > tMax) {
-        root = (-b + sqrtDiscriminant) / (2.0f * a);
+        root = (-b + sqrtDiscriminant) * denominator;
 
         if (root < tMin || root > tMax) {
             return false;
@@ -197,7 +193,7 @@ bool Intersects(Ray ray, Sphere sphere, float tMin, float tMax, out HitRecord hi
     return true;
 }
 
-bool Intersects(Ray ray, AABB aabb, float tMin, float tMax, out HitRecord hitRecord) {
+bool Intersects(Ray ray, AABB aabb, float tMin, float tMax, inout HitRecord hitRecord) {
     // https://medium.com/@bromanz/another-view-on-the-classic-ray-aabb-intersection-algorithm-for-bvh-traversal-41125138b525
     vec3 inverseRayDirection = vec3(1.0f) / ray.direction;
 
@@ -258,12 +254,12 @@ bool Trace(Ray ray, out HitRecord hitRecord) {
     }
 
     // Intersect with all AABBs.
-    for (int i = 0; i < objectData.numAABBs; ++i) {
-        if (Intersects(ray, objectData.aabbs[i], tMin, nearestIntersectionTime, temp)) {
-            intersected = true;
-            nearestIntersectionTime = temp.t;
-        }
-    }
+    //for (int i = 0; i < objectData.aabbs.length(); ++i) {
+    //    if (Intersects(ray, objectData.aabbs[i], tMin, nearestIntersectionTime, temp)) {
+    //        intersected = true;
+    //        nearestIntersectionTime = temp.t;
+    //    }
+    //}
 
     if (intersected) {
         hitRecord = temp;
@@ -279,7 +275,7 @@ float SchlickApproximation(float refractionCoefficient, float refractionRatio) {
 }
 
 vec3 Radiance(Ray ray) {
-    vec3 throughput = vec3(0.0f);
+    vec3 throughput = vec3(1.0f);
     vec3 radiance = vec3(0.0f);
 
     HitRecord hitRecord;
@@ -311,7 +307,7 @@ vec3 Radiance(Ray ray) {
                 case METALLIC: {
                     vec3 v = normalize(ray.direction);
                     vec3 n = normalize(hitRecord.normal);
-                    ray.direction = reflect(v, n) + material.reflectivity * normalize(RandomDirectionInHemisphere(hitRecord.normal));
+                    ray.direction = reflect(v, n) + material.reflectivity * normalize(RandomDirectionInHemisphere(n));
 
                     break;
                 }
@@ -329,12 +325,9 @@ vec3 Radiance(Ray ray) {
                         ray.direction = normalize(reflect(v, n));
                     }
                     else {
-                        ray.direction = normalize(refract(v, n, refractionRatio));
+                        ray.direction = normalize(refract(v, n, refractionRatio) + material.refractivity * normalize(RandomDirectionInHemisphere(n)));
                     }
 
-                    break;
-                }
-                case ISOTROPIC: {
                     break;
                 }
                 case EMISSIVE: {
@@ -366,7 +359,7 @@ void main() {
 
     for (int i = 0; i < samplesPerPixel; ++i) {
         // Generate random sub-pixel offset for antialiasing.
-        vec2 offset = vec2(RandomFloat(0.0f, 1.0f), RandomFloat(0.0f, 1.0f)) - 0.5f;
+        vec2 offset = vec2(0.0f);//vec2(RandomFloat(0.0f, 1.0f), RandomFloat(0.0f, 1.0f)) - 0.5f;
         vec2 ndc = (gl_FragCoord.xy + offset) / imageResolution * 2.0f - 1.0f;
 
         Ray ray = GetWorldSpaceRay(ndc);
