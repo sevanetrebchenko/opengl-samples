@@ -1,28 +1,23 @@
 
 #pragma once
 
-#define LAMBERTIAN 0
-#define METALLIC   1
-#define DIELECTRIC 2
-#define ISOTROPIC  3
-#define EMISSIVE   4
-
 namespace OpenGL {
 
-    struct Material {
-        glm::vec3 albedo = glm::vec3(1.0f);
-        int type = 0;
+    struct alignas(16) Material {
+        glm::vec3 albedo = glm::vec3(0.9f, 0.25f, 0.25f);
+        float ior = 1.05f;
 
         // Emissive material properties.
-        glm::vec3 emissive = glm::vec3(99);
-
-        // Metallic material properties.
-        float reflectivity = 9.0f;   // How clear reflections are.
+        glm::vec3 emissive = glm::vec3(0.0f);
 
         // Dielectric material properties.
-        glm::vec3 absorbance = glm::vec3(9.0f); // Beer's law.
-        float refractivity = 9.0f;   // How clear refractions are.
-        float ior = 9.0f;            // Index of refraction.
+        float refractionProbability = 0.98f;
+        glm::vec3 absorbance = glm::vec3(0.5f);
+        float refractivity = 1.0f;
+
+        // Metallic material properties.
+        float reflectionProbability = 0.02f;
+        float reflectivity = 1.0f;
     };
 
 }

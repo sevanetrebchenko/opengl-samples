@@ -8,7 +8,7 @@ namespace OpenGL {
 
     struct alignas(16) Sphere {
         glm::vec3 position = glm::vec3(0.0f);
-        float radius = 10.0f;
+        float radius = 5.0f;
 
         Material material;
     };

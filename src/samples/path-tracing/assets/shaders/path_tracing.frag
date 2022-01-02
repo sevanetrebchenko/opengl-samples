@@ -6,25 +6,21 @@
 #define EPSILON 0.0001f
 #define PI 3.14159265359
 
-#define LAMBERTIAN 0
-#define METALLIC   1
-#define DIELECTRIC 2
-#define EMISSIVE   4
-
 struct Material {
     vec3 albedo;
-    int type;
+    float ior;
 
     // Emissive material properties.
     vec3 emissive;
 
-    // Metallic material properties.
-    float reflectivity; // How clear reflections are.
-
     // Dielectric material properties.
-    vec3 absorbance;    // Beer's law.
-    float refractivity; // How clear refractions are.
-    float ior;          // Index of refraction.
+    float refractionProbability;
+    vec3 absorbance;
+    float refractivity;
+
+    // Metallic material properties.
+    float reflectionProbability;
+    float reflectivity;
 };
 
 struct Sphere {
@@ -87,63 +83,47 @@ uniform mat4 inverseViewMatrix;
 uniform vec3 cameraPosition;
 
 uniform vec2 imageResolution;
-uniform float dt;
+uniform uint frame;
 
 uniform int samplesPerPixel;
 uniform int numRayBounces;
 
 out vec4 fragColor;
 
-
-uint seed;
-
-// Random utility functions.
-
-uint PCGHash() {
-    uint state = seed;
+// https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
+uint rng;
+uint GetPCGHash(inout uint seed) {
     seed = seed * 747796405u + 2891336453u;
-    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    uint word = ((seed >> ((seed >> 28u) + 4u)) ^ seed) * 277803737u;
     return (word >> 22u) ^ word;
 }
 
-// Returns pseudo-random float on the domain [min, max].
-float RandomFloat(float min, float max) {
-    float base = float(PCGHash()) / 4294967296.0;
-    return min + base * (max - min);
+float GetRandomFloat01() {
+    return float(GetPCGHash(rng)) / 4294967296.0;
 }
 
-vec3 RandomCosineDirection() {
-    float r1 = RandomFloat(0.0f, 1.0f);
-    float r2 = RandomFloat(0.0f, 1.0f);
-    float z = sqrt(1.0f - r2);
+//// Returns pseudo-random float on the domain [min, max].
+//float RandomFloat(float min, float max) {
+//    // 32 bit precision spans from -2147483648 to 2147483647, which is 4294967295 unique values.
+//    float base = float(PCGHash()) / 4294967295.0f;
+//    return min + base * (max - min);
+//}
 
-    float phi = 2.0f * PI * r1;
-    float x = cos(phi) * sqrt(r2);
-    float y = sin(phi) * sqrt(r2);
-
-    return vec3(x, y, z);
-}
-
-vec3 RandomDirection(float min, float max) {
-    return vec3(RandomFloat(min, max), RandomFloat(min, max), RandomFloat(min, max));
-}
-
-vec3 RandomDirectionInUnitSphere() {
-    while (true) {
-        vec3 direction = RandomDirection(-1.0f, 1.0f);
-
-        if (dot(direction, direction) >= 1.0f) {
-            continue;
-        }
-
-        return direction;
-    }
-}
-
-vec3 RandomDirectionInHemisphere(vec3 direction) {
-    vec3 random = RandomDirectionInUnitSphere();
-    return dot(random, direction) > 0.0f ? random : -random;
-}
+//vec3 RandomCosineDirection() {
+//    float r1 = GetRandomFloat01(0.0f, 1.0f);
+//    float r2 = RandomFloat(0.0f, 1.0f);
+//    float z = sqrt(1.0f - r2);
+//
+//    float phi = 2.0f * PI * r1;
+//    float x = cos(phi) * sqrt(r2);
+//    float y = sin(phi) * sqrt(r2);
+//
+//    return vec3(x, y, z);
+//}
+//
+//vec3 RandomDirection(float min, float max) {
+//    return vec3(RandomFloat(min, max), RandomFloat(min, max), RandomFloat(min, max));
+//}
 
 // Returns a ray in world space based on normalized screen-space coordinates.
 Ray GetWorldSpaceRay(vec2 ndc) {
@@ -152,7 +132,7 @@ Ray GetWorldSpaceRay(vec2 ndc) {
     return Ray(cameraPosition, normalize(inverseViewMatrix * direction).xyz);
 }
 
-bool Intersects(Ray ray, Sphere sphere, float tMin, float tMax, out HitRecord hitRecord) {
+bool Intersects(Ray ray, Sphere sphere, float tMin, float tMax, inout HitRecord hitRecord) {
     vec3 sphereToRayOrigin = ray.origin - sphere.position;
 
     float a = dot(ray.direction, ray.direction);
@@ -186,7 +166,7 @@ bool Intersects(Ray ray, Sphere sphere, float tMin, float tMax, out HitRecord hi
     // Ensure normal always points against the incident ray.
     vec3 normal = normalize(hitRecord.point - sphere.position);
     hitRecord.fromInside = dot(ray.direction, normal) > 0.0f;
-    hitRecord.normal = hitRecord.fromInside ? normal : -normal;
+    hitRecord.normal = hitRecord.fromInside ? -normal : normal;
 
     hitRecord.material = sphere.material;
 
@@ -268,10 +248,81 @@ bool Trace(Ray ray, out HitRecord hitRecord) {
     return intersected;
 }
 
-float SchlickApproximation(float refractionCoefficient, float refractionRatio) {
-    float f = (1.0f - refractionRatio) / (1.0f + refractionRatio);
+float FresnelSchlick(float cosTheta, float n1, float n2) {
+    float f = (n1 - n2) / (n1 + n2);
     f *= f;
-    return f + (1.0f - f) * pow(1.0f - refractionCoefficient, 5);
+    return f + (1.0f - f) * pow(1.0f - cosTheta, 5.0f);
+}
+
+vec3 CosineSampleHemisphere(vec3 normal) {
+    // Source: https://blog.demofox.org/2020/05/25/casual-shadertoy-path-tracing-1-basic-camera-diffuse-emissive/
+
+    float z = GetRandomFloat01() * 2.0 - 1.0;
+    float a = GetRandomFloat01() * 2.0 * PI;
+    float r = sqrt(1.0 - z * z);
+    float x = r * cos(a);
+    float y = r * sin(a);
+
+    // Convert unit vector in sphere to a cosine weighted vector in hemisphere
+    return normalize(normal + vec3(x, y, z));
+}
+
+// Bidirectional scattering distribution function (deals with full sphere surrounding surface normal).
+// Returns the probability that the given ray was chosen.
+float BSDF(inout Ray ray, HitRecord hitRecord) {
+    float reflectionProbability = hitRecord.material.reflectionProbability;
+    float refractionProbability = hitRecord.material.refractionProbability;
+
+    vec3 v = normalize(ray.direction);
+    vec3 n = normalize(hitRecord.normal);
+
+    if (reflectionProbability > 0.0f) {
+        // Apply Fresnel effect to all objects (affects ray reflection probability at grazing angles of incidence).
+        // Assume outside medium to be air (n = 1.0f).
+        float t;
+        float cosTheta = dot(-v, n);
+
+        if (hitRecord.fromInside) {
+            t = FresnelSchlick(cosTheta, hitRecord.material.ior, 1.0f);
+        }
+        else {
+            t = FresnelSchlick(cosTheta, 1.0f, hitRecord.material.ior);
+        }
+
+        reflectionProbability = mix(reflectionProbability, 1.0f, t);
+        float diffuseProbability = 1.0f - reflectionProbability - refractionProbability;
+        refractionProbability = 1.0f - reflectionProbability - diffuseProbability;
+    }
+
+    float probability = 1.0f;
+
+    // Select which ray to follow based.
+    float raySelect = GetRandomFloat01();
+    vec3 direction;
+
+    if (reflectionProbability > raySelect) {
+        // Reflect.
+        direction = reflect(v, n);
+        probability = reflectionProbability;
+    }
+    else if (reflectionProbability + refractionProbability > raySelect) {
+        // Refract.
+        float eta = hitRecord.fromInside ? hitRecord.material.ior : 1.0f / hitRecord.material.ior;
+        direction = refract(v, n, eta);
+        probability = refractionProbability;
+    }
+    else {
+        // Diffuse ray (Lambert's cosine law).
+        direction = CosineSampleHemisphere(n);
+        probability = 1.0f - reflectionProbability - refractionProbability;
+    }
+
+    ray.direction = normalize(direction);
+
+    // Prevent floating point error from triggering an intersection with the object we just intersected.
+    ray.origin = hitRecord.point + ray.direction * EPSILON;
+
+    return max(probability, EPSILON);
 }
 
 vec3 Radiance(Ray ray) {
@@ -282,84 +333,46 @@ vec3 Radiance(Ray ray) {
 
     for (int i = 0; i < numRayBounces; ++i) {
         if (Trace(ray, hitRecord)) {
-            Material material = hitRecord.material;
-
             if (hitRecord.fromInside) {
-                // Emerging from within medium, apply Beer's law.
                 hitRecord.normal *= -1.0f;
-                throughput *= exp(-material.absorbance * hitRecord.t);
+
+                // Emerging from within medium, apply Beer's law.
+                // Beer's law is scaled over the distance the ray traveled while inside the medium. This can be simulated
+                // by scaling the absorbance of the medium by the intersection time of the ray. The longer the intersection
+                // time is, the further the ray traveled before emerging from the medium.
+                throughput *= exp(-hitRecord.material.absorbance * hitRecord.t);
             }
 
-            switch (material.type) {
-                case LAMBERTIAN: {
-                    OrthonormalBasis onb = ConstructONB(hitRecord.normal);
-                    ray.direction = GetLocalVector(onb, RandomCosineDirection());
+            float selectionProbability = BSDF(ray, hitRecord);
 
-                    // Ensure scatter direction does not cancel out normal.
-                    if ((abs(ray.direction.x) < EPSILON) && (abs(ray.direction.y) < EPSILON) && (abs(ray.direction.z) < EPSILON)) {
-                        ray.direction = hitRecord.normal;
-                    }
+            radiance += hitRecord.material.emissive * throughput;
 
-                    throughput *= material.albedo;
+            throughput *= hitRecord.material.albedo;
+            throughput /= selectionProbability;
 
-                    break;
-                }
-                case METALLIC: {
-                    vec3 v = normalize(ray.direction);
-                    vec3 n = normalize(hitRecord.normal);
-                    ray.direction = reflect(v, n) + material.reflectivity * normalize(RandomDirectionInHemisphere(n));
-
-                    break;
-                }
-                case DIELECTRIC: {
-                    float refractionRatio = hitRecord.fromInside ? 1.0f / material.ior : material.ior;
-                    vec3 v = normalize(ray.direction);
-                    vec3 n = normalize(hitRecord.normal);
-
-                    // Deriving Snell's law.
-                    float refractionCoefficient = dot(n, -v);
-                    float cosTheta = min(refractionCoefficient, 1.0f);
-                    float sinTheta = sqrt(1.0f - cosTheta * cosTheta); // Trig identity.
-
-                    if (refractionRatio * sinTheta > 1.0f || SchlickApproximation(cosTheta, refractionRatio) > RandomFloat(0.0f, 1.0f)) {
-                        ray.direction = normalize(reflect(v, n));
-                    }
-                    else {
-                        ray.direction = normalize(refract(v, n, refractionRatio) + material.refractivity * normalize(RandomDirectionInHemisphere(n)));
-                    }
-
-                    break;
-                }
-                case EMISSIVE: {
-                    radiance += material.emissive * throughput;
-                    break;
-                }
-            }
-
-            ray.origin = hitRecord.point + ray.direction * EPSILON;
-
-            // Apply Russian Roulette to terminate rays.
-            if (RandomFloat(0.0f, 1.0f) > max(throughput.x, max(throughput.y, throughput.z))) {
+            float p = max(throughput.x, max(throughput.y, throughput.z));
+            if (GetRandomFloat01() > p)
                 break;
-            }
+
+            throughput /= p;
         }
         else {
             // Ray didn't hit anything, sample skybox texture.
             radiance += texture(skybox, ray.direction).rgb * throughput;
+            break;
         }
     }
 
     return radiance;
 }
 
-
 void main() {
     vec3 color = vec3(0.0f);
-    seed = uint(gl_FragCoord.x * 1973 + gl_FragCoord.y * 9277 + dt * 2699) | 1;
+    rng = uint(gl_FragCoord.x * 1973 + gl_FragCoord.y * 9277) | uint(1);
 
     for (int i = 0; i < samplesPerPixel; ++i) {
         // Generate random sub-pixel offset for antialiasing.
-        vec2 offset = vec2(0.0f);//vec2(RandomFloat(0.0f, 1.0f), RandomFloat(0.0f, 1.0f)) - 0.5f;
+        vec2 offset = vec2(GetRandomFloat01(), GetRandomFloat01()) - 0.5f;
         vec2 ndc = (gl_FragCoord.xy + offset) / imageResolution * 2.0f - 1.0f;
 
         Ray ray = GetWorldSpaceRay(ndc);
@@ -369,3 +382,4 @@ void main() {
     color /= samplesPerPixel;
     fragColor = vec4(color, 1.0f);
 }
+

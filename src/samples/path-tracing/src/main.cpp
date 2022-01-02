@@ -79,7 +79,7 @@ int main() {
 
     // Initialize camera.
     OpenGL::Camera camera { width, height };
-    camera.SetPosition(glm::vec3(0.0f, 0.0f, 5.0f));
+    camera.SetPosition(glm::vec3(0.0f, 0.0f, 10.0f));
     glViewport(0, 0, width, height);
 
     // Initialize skybox.
@@ -212,6 +212,8 @@ int main() {
     glBindTexture(GL_TEXTURE_CUBE_MAP, skybox);
     shader.SetUniform("skybox", 0);
 
+    unsigned frame = 0;
+
     while ((glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS) && (glfwWindowShouldClose(window) == 0)) {
         glfwPollEvents();
 
@@ -307,9 +309,9 @@ int main() {
         shader.SetUniform("inverseProjectionMatrix", glm::inverse(camera.GetPerspectiveTransform()));
         shader.SetUniform("inverseViewMatrix", glm::inverse(camera.GetViewTransform()));
         shader.SetUniform("imageResolution", glm::vec2(width, height));
-        shader.SetUniform("dt", dt);
-        shader.SetUniform("samplesPerPixel", 4);
-        shader.SetUniform("numRayBounces", 1);
+        shader.SetUniform("frame", ++frame);
+        shader.SetUniform("samplesPerPixel", 16);
+        shader.SetUniform("numRayBounces", 16);
 
         // Rendering.
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
