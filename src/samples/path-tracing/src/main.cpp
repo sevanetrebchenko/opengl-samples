@@ -136,7 +136,15 @@ int main() {
 //    models.emplace_back(OpenGL::ObjectLoader::Instance().LoadFromFile("src/common/assets/models/bunny.obj"));
 
     std::vector<OpenGL::Sphere> spheres(256);
+
+    spheres[2].position = glm::vec3(0.0f, -20.0f, 0.0f);
+    spheres[2].radius = 10.0f;
+    spheres[2].material.reflectionProbability = 1.0f;
+    spheres[2].material.refractionProbability = 0.0f;
+
     spheres[1].position = glm::vec3(0.0f, 11.0f, 0.0f);
+    spheres[1].material.emissive = glm::vec3(1.0f);
+    spheres[1].material.reflectionProbability = 0.0f;
 
     GLuint ssbo;
     glGenBuffers(1, &ssbo);
@@ -148,7 +156,7 @@ int main() {
 
     // Set data.
     // numSpheres.
-    int numSpheres = 2;
+    int numSpheres = 3;
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numSpheres);
     offset += sizeof(glm::vec4);
 

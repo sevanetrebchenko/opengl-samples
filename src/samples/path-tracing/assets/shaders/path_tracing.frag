@@ -3,7 +3,7 @@
 
 #define FLT_MAX 3.402823466e+38
 #define FLT_MIN 1.175494351e-38
-#define EPSILON 0.01f
+#define EPSILON 0.0001f
 #define PI 3.14159265359
 
 struct Material {
@@ -55,21 +55,6 @@ struct OrthonormalBasis {
     vec3[3] axes;
 };
 
-OrthonormalBasis ConstructONB(vec3 normal) {
-    OrthonormalBasis basis;
-    basis.axes[2] = normalize(normal);
-
-    vec3 a = (abs(basis.axes[2].x) > 0.9f) ? vec3(0.0f, 1.0f, 0.0f) : vec3(1.0f, 0.0f, 0.0f);
-    basis.axes[1] = normalize(cross(basis.axes[2], a));
-    basis.axes[0] = normalize(cross(basis.axes[2], basis.axes[1]));
-
-    return basis;
-}
-
-vec3 GetLocalVector(OrthonormalBasis basis, vec3 vector) {
-    return vector.x * basis.axes[0] + vector.y * basis.axes[1] + vector.z * basis.axes[2];
-}
-
 uniform samplerCube skybox;
 
 layout (std140, binding = 1) readonly buffer ObjectData {
@@ -91,69 +76,47 @@ uniform int numRayBounces;
 out vec4 fragColor;
 
 // https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
-uint rng;
-//uint GetPCGHash(inout uint seed) {
-//    seed = seed * 747796405u + 2891336453u;
-//    uint word = ((seed >> ((seed >> 28u) + 4u)) ^ seed) * 277803737u;
-//    return (word >> 22u) ^ word;
-//}
-//
-//float GetRandomFloat01() {
-//    return float(GetPCGHash(rng)) / 4294967296.0;
-//}
-
-const float c_pi = 3.14159265359f;
-const float c_twopi = 2.0f * c_pi;
-
-uint wang_hash()
-{
-    rng = uint(rng ^ uint(61)) ^ uint(rng >> uint(16));
-    rng *= uint(9);
-    rng = rng ^ (rng >> 4);
-    rng *= uint(0x27d4eb2d);
-    rng = rng ^ (rng >> 15);
-    return rng;
+uint PCGHash(inout uint rngState) {
+    uint state = rngState;
+    rngState = rngState * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
 }
 
-float GetRandomFloat01()
-{
-    return float(wang_hash()) / 4294967296.0;
+// Returns a random float on the domain [min, max].
+float RandomFloat(inout uint rngState, float min, float max) {
+    // 32 bit precision spans from -2147483648 to 2147483647, which is 4294967295 unique values.
+    float base = float(PCGHash(rngState)) / 4294967295.0f;
+    return min + base * (max - min);
 }
 
-vec3 RandomUnitVector()
-{
-    float z = GetRandomFloat01() * 2.0f - 1.0f;
-    float a = GetRandomFloat01() * c_twopi;
-    float r = sqrt(1.0f - z * z);
-    float x = r * cos(a);
-    float y = r * sin(a);
-    return vec3(x, y, z);
+OrthonormalBasis ConstructONB(vec3 normal) {
+    OrthonormalBasis basis;
+    basis.axes[2] = normalize(normal);
+
+    vec3 a = (abs(basis.axes[2].x) > 0.9f) ? vec3(0.0f, 1.0f, 0.0f) : vec3(1.0f, 0.0f, 0.0f);
+    basis.axes[1] = normalize(cross(basis.axes[2], a));
+    basis.axes[0] = normalize(cross(basis.axes[2], basis.axes[1]));
+
+    return basis;
 }
 
-
-
-//// Returns pseudo-random float on the domain [min, max].
-//float RandomFloat(float min, float max) {
-//    // 32 bit precision spans from -2147483648 to 2147483647, which is 4294967295 unique values.
-//    float base = float(PCGHash()) / 4294967295.0f;
-//    return min + base * (max - min);
-//}
-
-vec3 RandomCosineDirection() {
-    float r1 = GetRandomFloat01();
-    float r2 = GetRandomFloat01();
-    float z = sqrt(1.0f - r2);
-
-    float phi = 2.0f * PI * r1;
-    float x = cos(phi) * sqrt(r2);
-    float y = sin(phi) * sqrt(r2);
-
-    return vec3(x, y, z);
+vec3 GetLocalVector(OrthonormalBasis basis, vec3 vector) {
+    return vector.x * basis.axes[0] + vector.y * basis.axes[1] + vector.z * basis.axes[2];
 }
-//
-//vec3 RandomDirection(float min, float max) {
-//    return vec3(RandomFloat(min, max), RandomFloat(min, max), RandomFloat(min, max));
-//}
+
+// Generates a random cosine weighted vector within the orthonormal basis surrounding the given normal 'n'.
+// https://www.particleincell.com/2015/cosine-distribution/
+vec3 GenerateRandomDirection(inout uint rngState, vec3 n) {
+    OrthonormalBasis basis = ConstructONB(n);
+
+    float cosTheta = sqrt(1.0f - RandomFloat(rngState, 0.0f, 1.0f));
+    float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
+    float phi = 2.0f * PI * RandomFloat(rngState, 0.0f, 1.0f);
+
+    vec3 vector = vec3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
+    return normalize(GetLocalVector(basis, vector));
+}
 
 // Returns a ray in world space based on normalized screen-space coordinates.
 Ray GetWorldSpaceRay(vec2 ndc) {
@@ -193,10 +156,13 @@ bool Intersects(Ray ray, Sphere sphere, float tMin, float tMax, inout HitRecord 
 
     hitRecord.t = t;
     hitRecord.point = ray.origin + ray.direction * hitRecord.t;
+
     vec3 normal = normalize(hitRecord.point - sphere.position);
+
     // Positive dot product means vectors point in the same direction.
     hitRecord.fromInside = dot(ray.direction, normal) > 0.0f;
     hitRecord.normal = hitRecord.fromInside ? -normal : normal;
+
     hitRecord.material = sphere.material;
 
     return true;
@@ -206,10 +172,10 @@ bool Intersects(Ray ray, AABB aabb, float tMin, float tMax, inout HitRecord hitR
     // https://medium.com/@bromanz/another-view-on-the-classic-ray-aabb-intersection-algorithm-for-bvh-traversal-41125138b525
     vec3 inverseRayDirection = vec3(1.0f) / ray.direction;
 
-	vec3 t0s = (aabb.minimum - ray.origin) * inverseRayDirection;
-  	vec3 t1s = (aabb.maximum - ray.origin) * inverseRayDirection;
+    vec3 t0s = (aabb.minimum - ray.origin) * inverseRayDirection;
+    vec3 t1s = (aabb.maximum - ray.origin) * inverseRayDirection;
 
-  	vec3 tMinimum = min(t0s, t1s);
+    vec3 tMinimum = min(t0s, t1s);
     vec3 tMaximum = max(t0s, t1s);
 
     tMin = max(tMin, max(tMinimum[0], max(tMinimum[1], tMinimum[2])));
@@ -245,7 +211,7 @@ bool Intersects(Ray ray, AABB aabb, float tMin, float tMax, inout HitRecord hitR
 }
 
 bool Trace(Ray ray, out HitRecord hitRecord) {
-    float tMin = 0.001f; // Slight offset.
+    float tMin = EPSILON; // Slight offset.
     float tMax = FLT_MAX;
 
     bool intersected = false;
@@ -277,49 +243,33 @@ bool Trace(Ray ray, out HitRecord hitRecord) {
     return intersected;
 }
 
-float FresnelSchlick(float cosTheta, float n1, float n2) {
+// Schlick approximation.
+float SchlickApproximation(float cosTheta, float n1, float n2) {
     float f = (n1 - n2) / (n1 + n2);
     f *= f;
     return f + (1.0f - f) * pow(1.0f - cosTheta, 5.0f);
 }
 
-vec3 CosineSampleHemisphere(vec3 normal) {
-    // Source: https://blog.demofox.org/2020/05/25/casual-shadertoy-path-tracing-1-basic-camera-diffuse-emissive/
+// n1 - ior of the material the ray originated in.
+// n2 - ior of the material the ray is entering.
+float FresnelReflectAmount(vec3 n, vec3 v, float n1, float n2) {
+    float cosTheta = dot(-v, n);
 
-    float z = GetRandomFloat01() * 2.0 - 1.0;
-    float a = GetRandomFloat01() * 2.0 * PI;
-    float r = sqrt(1.0 - z * z);
-    float x = r * cos(a);
-    float y = r * sin(a);
+    if (n2 < n1) {
+        // Ray originated from a denser material, and is entering a lighter one.
+        float eta = n1 / n2;
+        float sinTheta = sqrt(1.0f - cosTheta * cosTheta); // Trig identity.
 
-    // Convert unit vector in sphere to a cosine weighted vector in hemisphere
-    return normalize(normal + vec3(x, y, z));
-}
-
-
-float FresnelReflectAmount(float n1, float n2, vec3 normal, vec3 incident, float f0, float f90)
-{
-    // Schlick aproximation
-    float r0 = (n1-n2) / (n1+n2);
-    r0 *= r0;
-    float cosX = -dot(normal, incident);
-    if (n1 > n2)
-    {
-        float n = n1/n2;
-        float sinT2 = n*n*(1.0-cosX*cosX);
-        // Total internal reflection
-        if (sinT2 > 1.0)
-        return f90;
-        cosX = sqrt(1.0-sinT2);
+        if (eta * sinTheta > 1.0f) {
+            // Total internal reflection, full reflection.
+            return 1.0f;
+        }
     }
-    float x = 1.0-cosX;
-    float ret = r0+(1.0-r0)*x*x*x*x*x;
 
-    // adjust reflect multiplier for object reflectivity
-    return mix(f0, f90, ret);
+    return SchlickApproximation(cosTheta, n1, n2); // Solve Fresnel equations.
 }
 
-vec3 Radiance(Ray ray) {
+vec3 Radiance(uint rngState, Ray ray) {
     vec3 throughput = vec3(1.0f);
     vec3 radiance = vec3(0.0f);
 
@@ -362,7 +312,8 @@ vec3 Radiance(Ray ray) {
                     n2 = material.ior;
                 }
 
-                reflectionProbability = FresnelReflectAmount(n1, n2, v, n, material.reflectionProbability, 1.0f);
+                float t = FresnelReflectAmount(v, n, n1, n2);
+                reflectionProbability = mix(material.reflectionProbability, 1.0f, t);
 
                 // Need to maintain the same probability ratio for refraction and diffuse later.
                 float scalingFactor = (1.0f - reflectionProbability) / (1.0f - material.reflectionProbability);
@@ -371,7 +322,7 @@ vec3 Radiance(Ray ray) {
 
             // Randomly determine which ray to follow based on material properties.
             float rayProbability;
-            float raySelectRoll = GetRandomFloat01();
+            float raySelectRoll = RandomFloat(rngState, 0.0f, 1.0f);
 
             float reflectionFactor = 0.0f;
             float refractionFactor = 0.0f;
@@ -392,7 +343,7 @@ vec3 Radiance(Ray ray) {
             }
 
             // Avoid division by 0.
-            rayProbability = max(rayProbability, 0.001f);
+            rayProbability = max(rayProbability, EPSILON);
 
             // Prevent floating point error from triggering an intersection with the object we just intersected.
             if (refractionFactor > 0.5f) {
@@ -404,15 +355,16 @@ vec3 Radiance(Ray ray) {
             }
 
             // Calculate new ray direction.
-            vec3 diffuseRayDirection = normalize(GetLocalVector(ConstructONB(n), RandomCosineDirection()));
+            vec3 diffuseRayDirection = GenerateRandomDirection(rngState, n);
 
             // Interpolate between smooth specular and rough diffuse directions by the surface material properties.
             vec3 reflectionRayDirection = reflect(v, n);
             reflectionRayDirection = normalize(mix(reflectionRayDirection, diffuseRayDirection, material.reflectionRoughness * material.reflectionRoughness));
 
+            // Interpolate between smooth refraction and rough diffuse directions by the surface material properties.
             float eta = hitRecord.fromInside ? material.ior : 1.0f / material.ior;
             vec3 refractionRayDirection = refract(v, n, eta);
-            refractionRayDirection = normalize(mix(refractionRayDirection, normalize(GetLocalVector(ConstructONB(-n), RandomCosineDirection())), material.refractionRoughness * material.refractionRoughness));
+            refractionRayDirection = normalize(mix(refractionRayDirection, GenerateRandomDirection(rngState, -n), material.refractionRoughness * material.refractionRoughness));
 
             ray.direction = mix(diffuseRayDirection, reflectionRayDirection, reflectionFactor);
             ray.direction = mix(ray.direction, refractionRayDirection, refractionFactor);
@@ -434,7 +386,7 @@ vec3 Radiance(Ray ray) {
             // Russian Roulette.
             // As the throughput gets smaller and smaller, the ray has a higher chance of being terminated.
             float probability = max(throughput.r, max(throughput.g, throughput.b));
-            if (probability < GetRandomFloat01()) {
+            if (probability < RandomFloat(rngState, 0.0f, 1.0f)) {
                 break;
             }
 
@@ -453,15 +405,15 @@ vec3 Radiance(Ray ray) {
 
 void main() {
     vec3 color = vec3(0.0f);
-    rng = uint(gl_FragCoord.x * 1973 + gl_FragCoord.y * 9277 + frame * 26699) | uint(1);
+    uint rngState = uint(gl_FragCoord.x * 1973 + gl_FragCoord.y * 9277 + frame * 26699) | uint(1);
 
     for (int i = 0; i < samplesPerPixel; ++i) {
         // Generate random sub-pixel offset for antialiasing.
-        vec2 offset = vec2(GetRandomFloat01(), GetRandomFloat01()) - 0.5f;
-        vec2 ndc = (gl_FragCoord.xy + offset) / imageResolution * 2.0f - 1.0f;
+        vec2 offset = vec2(RandomFloat(rngState, 0.0f, 1.0f), RandomFloat(rngState, 0.0f, 1.0f)) - 0.5f;
+        vec2 ndc = (gl_FragCoord.xy + offset) / imageResolution.xy * 2.0f - 1.0f;
 
         Ray ray = GetWorldSpaceRay(ndc);
-        color += Radiance(ray);
+        color += Radiance(rngState, ray);
     }
 
     color /= samplesPerPixel;
