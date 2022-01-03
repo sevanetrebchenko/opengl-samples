@@ -136,6 +136,7 @@ int main() {
 //    models.emplace_back(OpenGL::ObjectLoader::Instance().LoadFromFile("src/common/assets/models/bunny.obj"));
 
     std::vector<OpenGL::Sphere> spheres(256);
+    spheres[1].position = glm::vec3(0.0f, 11.0f, 0.0f);
 
     GLuint ssbo;
     glGenBuffers(1, &ssbo);
@@ -147,15 +148,13 @@ int main() {
 
     // Set data.
     // numSpheres.
-    int numSpheres = 1;
+    int numSpheres = 2;
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numSpheres);
     offset += sizeof(glm::vec4);
 
     for (OpenGL::Sphere& sphere : spheres) {
         glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::Sphere), &sphere);
-
-//        // Each sphere needs 3 floats worth of padding.
-//        offset += sizeof(OpenGL::Sphere) + sizeof(float) * 3;
+        offset += sizeof(OpenGL::Sphere);
     }
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);

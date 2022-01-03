@@ -3,7 +3,7 @@
 
 #define FLT_MAX 3.402823466e+38
 #define FLT_MIN 1.175494351e-38
-#define EPSILON 0.0001f
+#define EPSILON 0.01f
 #define PI 3.14159265359
 
 struct Material {
@@ -16,11 +16,11 @@ struct Material {
     // Dielectric material properties.
     float refractionProbability;
     vec3 absorbance;
-    float refractivity;
+    float refractionRoughness;
 
     // Metallic material properties.
     float reflectionProbability;
-    float reflectivity;
+    float reflectionRoughness;
 };
 
 struct Sphere {
@@ -92,15 +92,45 @@ out vec4 fragColor;
 
 // https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
 uint rng;
-uint GetPCGHash(inout uint seed) {
-    seed = seed * 747796405u + 2891336453u;
-    uint word = ((seed >> ((seed >> 28u) + 4u)) ^ seed) * 277803737u;
-    return (word >> 22u) ^ word;
+//uint GetPCGHash(inout uint seed) {
+//    seed = seed * 747796405u + 2891336453u;
+//    uint word = ((seed >> ((seed >> 28u) + 4u)) ^ seed) * 277803737u;
+//    return (word >> 22u) ^ word;
+//}
+//
+//float GetRandomFloat01() {
+//    return float(GetPCGHash(rng)) / 4294967296.0;
+//}
+
+const float c_pi = 3.14159265359f;
+const float c_twopi = 2.0f * c_pi;
+
+uint wang_hash()
+{
+    rng = uint(rng ^ uint(61)) ^ uint(rng >> uint(16));
+    rng *= uint(9);
+    rng = rng ^ (rng >> 4);
+    rng *= uint(0x27d4eb2d);
+    rng = rng ^ (rng >> 15);
+    return rng;
 }
 
-float GetRandomFloat01() {
-    return float(GetPCGHash(rng)) / 4294967296.0;
+float GetRandomFloat01()
+{
+    return float(wang_hash()) / 4294967296.0;
 }
+
+vec3 RandomUnitVector()
+{
+    float z = GetRandomFloat01() * 2.0f - 1.0f;
+    float a = GetRandomFloat01() * c_twopi;
+    float r = sqrt(1.0f - z * z);
+    float x = r * cos(a);
+    float y = r * sin(a);
+    return vec3(x, y, z);
+}
+
+
 
 //// Returns pseudo-random float on the domain [min, max].
 //float RandomFloat(float min, float max) {
@@ -109,17 +139,17 @@ float GetRandomFloat01() {
 //    return min + base * (max - min);
 //}
 
-//vec3 RandomCosineDirection() {
-//    float r1 = GetRandomFloat01(0.0f, 1.0f);
-//    float r2 = RandomFloat(0.0f, 1.0f);
-//    float z = sqrt(1.0f - r2);
-//
-//    float phi = 2.0f * PI * r1;
-//    float x = cos(phi) * sqrt(r2);
-//    float y = sin(phi) * sqrt(r2);
-//
-//    return vec3(x, y, z);
-//}
+vec3 RandomCosineDirection() {
+    float r1 = GetRandomFloat01();
+    float r2 = GetRandomFloat01();
+    float z = sqrt(1.0f - r2);
+
+    float phi = 2.0f * PI * r1;
+    float x = cos(phi) * sqrt(r2);
+    float y = sin(phi) * sqrt(r2);
+
+    return vec3(x, y, z);
+}
 //
 //vec3 RandomDirection(float min, float max) {
 //    return vec3(RandomFloat(min, max), RandomFloat(min, max), RandomFloat(min, max));
@@ -133,41 +163,40 @@ Ray GetWorldSpaceRay(vec2 ndc) {
 }
 
 bool Intersects(Ray ray, Sphere sphere, float tMin, float tMax, inout HitRecord hitRecord) {
+    // https://antongerdelan.net/opengl/raycasting.html
     vec3 sphereToRayOrigin = ray.origin - sphere.position;
 
-    float a = dot(ray.direction, ray.direction);
-    float b = 2.0f * dot(sphereToRayOrigin, ray.direction);
+    float b = dot(sphereToRayOrigin, ray.direction);
     float c = dot(sphereToRayOrigin, sphereToRayOrigin) - (sphere.radius * sphere.radius);
 
-    float discriminant = (b * b - 4.0f * a * c);
+    float discriminant = b * b - c;
     if (discriminant < 0.0f) {
         // No real roots, no intersection.
         return false;
     }
 
     float sqrtDiscriminant = sqrt(discriminant);
-    float denominator = 2.0f / a;
 
-    float root = (-b - sqrtDiscriminant) * denominator;
+    float t1 = -b - sqrtDiscriminant;
+    float t2 = -b + sqrtDiscriminant;
 
-    // Find the nearest root that lies in the acceptable range.
-    if (root < tMin || root > tMax) {
-        root = (-b + sqrtDiscriminant) * denominator;
-
-        if (root < tMin || root > tMax) {
-            return false;
-        }
+    if (t2 < 0.0f) {
+        // Ray exited behind the origin (sphere is behind the camera).
+        return false;
     }
 
-    // Intersection detected.
-    hitRecord.t = root;
-    hitRecord.point = ray.origin + ray.direction * root;
+    // Bounds check.
+    float t = t1 < 0.0f ? t2 : t1;
+    if (t < tMin || t > tMax) {
+        return false;
+    }
 
-    // Ensure normal always points against the incident ray.
+    hitRecord.t = t;
+    hitRecord.point = ray.origin + ray.direction * hitRecord.t;
     vec3 normal = normalize(hitRecord.point - sphere.position);
+    // Positive dot product means vectors point in the same direction.
     hitRecord.fromInside = dot(ray.direction, normal) > 0.0f;
     hitRecord.normal = hitRecord.fromInside ? -normal : normal;
-
     hitRecord.material = sphere.material;
 
     return true;
@@ -267,62 +296,27 @@ vec3 CosineSampleHemisphere(vec3 normal) {
     return normalize(normal + vec3(x, y, z));
 }
 
-// Bidirectional scattering distribution function (deals with full sphere surrounding surface normal).
-// Returns the probability that the given ray was chosen.
-float BSDF(inout Ray ray, HitRecord hitRecord) {
-    float reflectionProbability = hitRecord.material.reflectionProbability;
-    float refractionProbability = hitRecord.material.refractionProbability;
 
-    vec3 v = normalize(ray.direction);
-    vec3 n = normalize(hitRecord.normal);
-
-    if (reflectionProbability > 0.0f) {
-        // Apply Fresnel effect to all objects (affects ray reflection probability at grazing angles of incidence).
-        // Assume outside medium to be air (n = 1.0f).
-        float t;
-        float cosTheta = dot(-v, n);
-
-        if (hitRecord.fromInside) {
-            t = FresnelSchlick(cosTheta, hitRecord.material.ior, 1.0f);
-        }
-        else {
-            t = FresnelSchlick(cosTheta, 1.0f, hitRecord.material.ior);
-        }
-
-        reflectionProbability = mix(reflectionProbability, 1.0f, t);
-        float diffuseProbability = 1.0f - reflectionProbability - refractionProbability;
-        refractionProbability = 1.0f - reflectionProbability - diffuseProbability;
+float FresnelReflectAmount(float n1, float n2, vec3 normal, vec3 incident, float f0, float f90)
+{
+    // Schlick aproximation
+    float r0 = (n1-n2) / (n1+n2);
+    r0 *= r0;
+    float cosX = -dot(normal, incident);
+    if (n1 > n2)
+    {
+        float n = n1/n2;
+        float sinT2 = n*n*(1.0-cosX*cosX);
+        // Total internal reflection
+        if (sinT2 > 1.0)
+        return f90;
+        cosX = sqrt(1.0-sinT2);
     }
+    float x = 1.0-cosX;
+    float ret = r0+(1.0-r0)*x*x*x*x*x;
 
-    float probability = 1.0f;
-
-    // Select which ray to follow based.
-    float raySelect = GetRandomFloat01();
-    vec3 direction;
-
-    if (reflectionProbability > raySelect) {
-        // Reflect.
-        direction = reflect(v, n);
-        probability = reflectionProbability;
-    }
-    else if (reflectionProbability + refractionProbability > raySelect) {
-        // Refract.
-        float eta = hitRecord.fromInside ? hitRecord.material.ior : 1.0f / hitRecord.material.ior;
-        direction = refract(v, n, eta);
-        probability = refractionProbability;
-    }
-    else {
-        // Diffuse ray (Lambert's cosine law).
-        direction = CosineSampleHemisphere(n);
-        probability = 1.0f - reflectionProbability - refractionProbability;
-    }
-
-    ray.direction = normalize(direction);
-
-    // Prevent floating point error from triggering an intersection with the object we just intersected.
-    ray.origin = hitRecord.point + ray.direction * EPSILON;
-
-    return max(probability, EPSILON);
+    // adjust reflect multiplier for object reflectivity
+    return mix(f0, f90, ret);
 }
 
 vec3 Radiance(Ray ray) {
@@ -333,28 +327,119 @@ vec3 Radiance(Ray ray) {
 
     for (int i = 0; i < numRayBounces; ++i) {
         if (Trace(ray, hitRecord)) {
-            if (hitRecord.fromInside) {
-                hitRecord.normal *= -1.0f;
 
+            Material material = hitRecord.material;
+            vec3 v = normalize(ray.direction);
+            vec3 n = normalize(hitRecord.normal);
+
+            // https://blog.demofox.org/2020/06/14/casual-shadertoy-path-tracing-3-fresnel-rough-refraction-absorption-orbit-camera/
+
+            if (hitRecord.fromInside) {
                 // Emerging from within medium, apply Beer's law.
                 // Beer's law is scaled over the distance the ray traveled while inside the medium. This can be simulated
                 // by scaling the absorbance of the medium by the intersection time of the ray. The longer the intersection
                 // time is, the further the ray traveled before emerging from the medium.
-                throughput *= exp(-hitRecord.material.absorbance * hitRecord.t);
+                throughput *= exp(-material.absorbance * hitRecord.t);
             }
 
-            float selectionProbability = BSDF(ray, hitRecord);
+            // Pre-Fresnel.
+            float reflectionProbability = material.reflectionProbability;
+            float refractionProbability = material.refractionProbability;
 
-            radiance += hitRecord.material.emissive * throughput;
+            // Adjust probabilities for Fresnel effect.
+            if (reflectionProbability > 0.0f) {
+                float n1;
+                float n2;
 
-            throughput *= hitRecord.material.albedo;
-            throughput /= selectionProbability;
+                // Determine material indices.
+                // Assumes camera is in air (1.0f).
+                if (hitRecord.fromInside) {
+                    n1 = material.ior;
+                    n2 = 1.0f;
+                }
+                else {
+                    n1 = 1.0f;
+                    n2 = material.ior;
+                }
 
-            float p = max(throughput.x, max(throughput.y, throughput.z));
-            if (GetRandomFloat01() > p)
+                reflectionProbability = FresnelReflectAmount(n1, n2, v, n, material.reflectionProbability, 1.0f);
+
+                // Need to maintain the same probability ratio for refraction and diffuse later.
+                float scalingFactor = (1.0f - reflectionProbability) / (1.0f - material.reflectionProbability);
+                refractionProbability *= scalingFactor;
+            }
+
+            // Randomly determine which ray to follow based on material properties.
+            float rayProbability;
+            float raySelectRoll = GetRandomFloat01();
+
+            float reflectionFactor = 0.0f;
+            float refractionFactor = 0.0f;
+
+            if (reflectionProbability > 0.0f && raySelectRoll < reflectionProbability) {
+                // Reflection ray.
+                reflectionFactor = 1.0f;
+                rayProbability = reflectionProbability;
+            }
+            else if (refractionProbability > 0.0f && raySelectRoll < (reflectionProbability + refractionProbability)) {
+                // Refraction ray.
+                refractionFactor = 1.0f;
+                rayProbability = refractionProbability;
+            }
+            else {
+                // Diffuse ray.
+                rayProbability = 1.0f - (reflectionProbability + refractionProbability);
+            }
+
+            // Avoid division by 0.
+            rayProbability = max(rayProbability, 0.001f);
+
+            // Prevent floating point error from triggering an intersection with the object we just intersected.
+            if (refractionFactor > 0.5f) {
+                // Refraction goes into the surface.
+                ray.origin = hitRecord.point - hitRecord.normal * EPSILON;
+            }
+            else {
+                ray.origin = hitRecord.point + hitRecord.normal * EPSILON;
+            }
+
+            // Calculate new ray direction.
+            vec3 diffuseRayDirection = normalize(GetLocalVector(ConstructONB(n), RandomCosineDirection()));
+
+            // Interpolate between smooth specular and rough diffuse directions by the surface material properties.
+            vec3 reflectionRayDirection = reflect(v, n);
+            reflectionRayDirection = normalize(mix(reflectionRayDirection, diffuseRayDirection, material.reflectionRoughness * material.reflectionRoughness));
+
+            float eta = hitRecord.fromInside ? material.ior : 1.0f / material.ior;
+            vec3 refractionRayDirection = refract(v, n, eta);
+            refractionRayDirection = normalize(mix(refractionRayDirection, normalize(GetLocalVector(ConstructONB(-n), RandomCosineDirection())), material.refractionRoughness * material.refractionRoughness));
+
+            ray.direction = mix(diffuseRayDirection, reflectionRayDirection, reflectionFactor);
+            ray.direction = mix(ray.direction, refractionRayDirection, refractionFactor);
+
+            ray.direction = normalize(ray.direction);
+
+            // Emissive lighting.
+            radiance += material.emissive * throughput;
+
+            // Refraction alone has no final color contribution, need to trace again until the new ray direction hits another object.
+            // Apply light absorbtion over distance through refractive object.
+            if (refractionFactor < 0.5f) {
+                throughput *= material.albedo;
+            }
+
+            // Only one final ray was selected to trace, account for not choosing the other two.
+            throughput /= rayProbability;
+
+            // Russian Roulette.
+            // As the throughput gets smaller and smaller, the ray has a higher chance of being terminated.
+            float probability = max(throughput.r, max(throughput.g, throughput.b));
+            if (probability < GetRandomFloat01()) {
                 break;
+            }
 
-            throughput /= p;
+            // Add the energy that is lost by randomly terminating paths.
+            throughput /= probability;
         }
         else {
             // Ray didn't hit anything, sample skybox texture.
@@ -368,7 +453,7 @@ vec3 Radiance(Ray ray) {
 
 void main() {
     vec3 color = vec3(0.0f);
-    rng = uint(gl_FragCoord.x * 1973 + gl_FragCoord.y * 9277) | uint(1);
+    rng = uint(gl_FragCoord.x * 1973 + gl_FragCoord.y * 9277 + frame * 26699) | uint(1);
 
     for (int i = 0; i < samplesPerPixel; ++i) {
         // Generate random sub-pixel offset for antialiasing.
