@@ -4,7 +4,9 @@
 #define FLT_MAX 3.402823466e+38
 #define FLT_MIN 1.175494351e-38
 #define EPSILON 0.0001f
-#define PI 3.14159265359
+#define PI 3.14159265359f
+
+
 
 struct Material {
     vec3 albedo;
@@ -55,25 +57,30 @@ struct OrthonormalBasis {
     vec3[3] axes;
 };
 
-uniform samplerCube skybox;
+
+
+layout (std140, binding = 0) uniform GlobalData {
+    // Camera information.
+    mat4 inverseProjectionMatrix;
+    mat4 inverseViewMatrix;
+    vec3 cameraPosition;
+
+    vec2 imageResolution;
+} globalData;
 
 layout (std140, binding = 1) readonly buffer ObjectData {
     int numSpheres;
     Sphere spheres[256];
 } objectData;
 
-uniform mat4 inverseProjectionMatrix;
-uniform mat4 inverseViewMatrix;
-
-uniform vec3 cameraPosition;
-
-uniform vec2 imageResolution;
-uniform uint frame;
-
+uniform samplerCube skyboxTexture;
+uniform uint frameCounter;
 uniform int samplesPerPixel;
 uniform int numRayBounces;
 
 out vec4 fragColor;
+
+
 
 // https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
 uint PCGHash(inout uint rngState) {
@@ -106,10 +113,10 @@ vec3 GetLocalVector(OrthonormalBasis basis, vec3 vector) {
 }
 
 // Generates a random cosine weighted vector within the orthonormal basis surrounding the given normal 'n'.
-// https://www.particleincell.com/2015/cosine-distribution/
 vec3 GenerateRandomDirection(inout uint rngState, vec3 n) {
     OrthonormalBasis basis = ConstructONB(n);
 
+    // https://www.particleincell.com/2015/cosine-distribution/
     float cosTheta = sqrt(1.0f - RandomFloat(rngState, 0.0f, 1.0f));
     float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
     float phi = 2.0f * PI * RandomFloat(rngState, 0.0f, 1.0f);
@@ -120,9 +127,9 @@ vec3 GenerateRandomDirection(inout uint rngState, vec3 n) {
 
 // Returns a ray in world space based on normalized screen-space coordinates.
 Ray GetWorldSpaceRay(vec2 ndc) {
-    vec4 direction = inverseProjectionMatrix * vec4(ndc, -1.0f, 0.0f);
+    vec4 direction = globalData.inverseProjectionMatrix * vec4(ndc, -1.0f, 0.0f);
     direction.zw = vec2(-1.0f, 0.0f);
-    return Ray(cameraPosition, normalize(inverseViewMatrix * direction).xyz);
+    return Ray(globalData.cameraPosition, normalize(globalData.inverseViewMatrix * direction).xyz);
 }
 
 bool Intersects(Ray ray, Sphere sphere, float tMin, float tMax, inout HitRecord hitRecord) {
@@ -395,7 +402,7 @@ vec3 Radiance(uint rngState, Ray ray) {
         }
         else {
             // Ray didn't hit anything, sample skybox texture.
-            radiance += texture(skybox, ray.direction).rgb * throughput;
+            radiance += texture(skyboxTexture, ray.direction).rgb * throughput;
             break;
         }
     }
@@ -405,12 +412,12 @@ vec3 Radiance(uint rngState, Ray ray) {
 
 void main() {
     vec3 color = vec3(0.0f);
-    uint rngState = uint(gl_FragCoord.x * 1973 + gl_FragCoord.y * 9277 + frame * 26699) | uint(1);
+    uint rngState = uint(gl_FragCoord.x * 1973 + gl_FragCoord.y * 9277 + frameCounter * 26699) | uint(1);
 
     for (int i = 0; i < samplesPerPixel; ++i) {
         // Generate random sub-pixel offset for antialiasing.
         vec2 offset = vec2(RandomFloat(rngState, 0.0f, 1.0f), RandomFloat(rngState, 0.0f, 1.0f)) - 0.5f;
-        vec2 ndc = (gl_FragCoord.xy + offset) / imageResolution.xy * 2.0f - 1.0f;
+        vec2 ndc = (gl_FragCoord.xy + offset) / globalData.imageResolution.xy * 2.0f - 1.0f;
 
         Ray ray = GetWorldSpaceRay(ndc);
         color += Radiance(rngState, ray);

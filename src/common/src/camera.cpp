@@ -77,20 +77,22 @@ namespace OpenGL {
 
     const glm::mat4 &Camera::GetCameraTransform() {
         if (isDirty_) {
-            CalculateMatrix();
+            RecalculateMatrices();
         }
         return cameraTransform_;
     }
 
     const glm::mat4 &Camera::GetPerspectiveTransform() {
         if (isDirty_) {
-            CalculateMatrix();
+            RecalculateMatrices();
         }
         return perspectiveTransform_;
     }
 
     const glm::mat4 &Camera::GetViewTransform() {
-        CalculateMatrix();
+        if (isDirty_) {
+            RecalculateMatrices();
+        }
         return viewTransform_;
     }
 
@@ -126,11 +128,15 @@ namespace OpenGL {
         return farPlaneDistance_;
     }
 
-    void Camera::CalculateMatrix() {
+    void Camera::RecalculateMatrices() {
         viewTransform_ = glm::lookAt(position_, position_ + lookAtDirection_, up_);
         perspectiveTransform_ = glm::perspective(glm::radians(fov_), aspectRatio_, nearPlaneDistance_, farPlaneDistance_);
         cameraTransform_ = perspectiveTransform_ * viewTransform_;
         isDirty_ = false;
+    }
+
+    bool Camera::IsDirty() const {
+        return isDirty_;
     }
 
 }

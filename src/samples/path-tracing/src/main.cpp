@@ -84,13 +84,6 @@ int main() {
 
     // Initialize skybox.
     // https://learnopengl.com/Advanced-OpenGL/Cubemaps
-    // Cubemap order:
-    // GL_TEXTURE_CUBE_MAP_POSITIVE_X - Right
-    // GL_TEXTURE_CUBE_MAP_NEGATIVE_X - Left
-    // GL_TEXTURE_CUBE_MAP_POSITIVE_Y - Top
-    // GL_TEXTURE_CUBE_MAP_NEGATIVE_Y - Bottom
-    // GL_TEXTURE_CUBE_MAP_POSITIVE_Z - Back
-    // GL_TEXTURE_CUBE_MAP_NEGATIVE_Z - Front
     std::vector<std::string> textureFaces = {
         "src/samples/path-tracing/assets/textures/skybox/pos_x.png",
         "src/samples/path-tracing/assets/textures/skybox/neg_x.png",
@@ -129,13 +122,30 @@ int main() {
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
     glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
-    // Initialize models.
-//    std::vector<OpenGL::Model> models;
-//    models.emplace_back(OpenGL::ObjectLoader::Instance().LoadFromFile("src/common/assets/models/bunny.obj"));
+    // Initialize global data UBO.
+    GLuint ubo;
+    glGenBuffers(1, &ubo);
+    glBindBuffer(GL_UNIFORM_BUFFER, ubo);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo); // Binding 0.
 
-    std::vector<OpenGL::Sphere> spheres(256);
+    // Inverse camera transforms (2x mat4), camera position (vec3, vec4 with padding), image resolution (vec2, vec4 with padding).
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 2 + sizeof(glm::vec4) + sizeof(glm::vec4), nullptr, GL_STATIC_DRAW);
+
+    // Image resolution stays constant throughout the lifetime of the application (for now).
+    glm::vec2 imageResolution = glm::vec2(width, height);
+    glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 2 + sizeof(glm::vec4), sizeof(glm::vec2), &imageResolution);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    // Initialize scene objects.
+    int numSpheres = 256;
+    int numAABBs = 256;
+
+    std::vector<OpenGL::Sphere> spheres(numSpheres);
+    std::vector<OpenGL::AABB> aabbs(numAABBs);
 
     spheres[2].position = glm::vec3(0.0f, -20.0f, 0.0f);
     spheres[2].radius = 10.0f;
@@ -150,24 +160,29 @@ int main() {
     glGenBuffers(1, &ssbo);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo); // Binding 1.
-    glBufferData(GL_SHADER_STORAGE_BUFFER, 256 * sizeof(OpenGL::Sphere), nullptr, GL_STATIC_DRAW);
 
-    std::size_t offset = 0;
+    // Number of active spheres (int, vec4 with padding), array of 256 spheres.
+    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) + numSpheres * sizeof(OpenGL::Sphere), nullptr, GL_STATIC_DRAW);
 
-    // Set data.
-    // numSpheres.
-    int numSpheres = 3;
-    glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numSpheres);
-    offset += sizeof(glm::vec4);
+    {
+        int offset = 0;
 
-    for (OpenGL::Sphere& sphere : spheres) {
-        glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::Sphere), &sphere);
-        offset += sizeof(OpenGL::Sphere);
+        // Set sphere object data.
+        int numActiveSpheres = 3;
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveSpheres);
+        offset += sizeof(glm::vec4);
+
+        for (int i = 0; i < numActiveSpheres; ++i) {
+            glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::Sphere), &spheres[i]);
+            offset += sizeof(OpenGL::Sphere);
+        }
+
+        offset += (numActiveSpheres - numSpheres) * sizeof(OpenGL::Sphere);
     }
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-    // Necessary buffers for a full-screen quad.
+    // Initialize necessary buffers for a full-screen quad.
     std::vector<glm::vec3> vertices = {
         { -1.0f, 1.0f, 0.0f },
         { -1.0f, -1.0f, 0.0f },
@@ -213,13 +228,12 @@ int main() {
     shader.Bind();
 
     glBindVertexArray(vao);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, skybox);
     shader.SetUniform("skybox", 0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, skybox);
 
-    unsigned frame = 0;
+    unsigned frameCounter = 0;
 
     while ((glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS) && (glfwWindowShouldClose(window) == 0)) {
         glfwPollEvents();
@@ -297,6 +311,26 @@ int main() {
             initialInput = true;
         }
 
+        // Update global data.
+        if (camera.IsDirty()) {
+            int offset = 0;
+
+            glBindBuffer(GL_UNIFORM_BUFFER, ubo);
+
+            // Calling any Get...() function recalculates all matrices.
+            // Inverse projection matrix.
+            glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::mat4), glm::value_ptr(glm::inverse(camera.GetPerspectiveTransform())));
+            offset += sizeof(glm::mat4);
+
+            // Inverse view matrix.
+            glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::mat4), glm::value_ptr(glm::inverse(camera.GetViewTransform())));
+            offset += sizeof(glm::mat4);
+
+            glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), glm::value_ptr(camera.GetPosition()));
+
+            glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        }
+
         // Update models.
         std::size_t bufferOffset = 0;
         glm::mat4 cameraTransform = camera.GetCameraTransform();
@@ -312,11 +346,13 @@ int main() {
 //            bufferOffset += numBytes;
 //        }
 
+
+
         shader.SetUniform("cameraPosition", camera.GetPosition());
         shader.SetUniform("inverseProjectionMatrix", glm::inverse(camera.GetPerspectiveTransform()));
         shader.SetUniform("inverseViewMatrix", glm::inverse(camera.GetViewTransform()));
         shader.SetUniform("imageResolution", glm::vec2(width, height));
-        shader.SetUniform("frame", ++frame);
+        shader.SetUniform("frame", ++frameCounter);
         shader.SetUniform("samplesPerPixel", 16);
         shader.SetUniform("numRayBounces", 16);
 
@@ -357,6 +393,7 @@ int main() {
     }
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
     glBindVertexArray(0);
     shader.Unbind();
 
@@ -365,6 +402,7 @@ int main() {
     glDeleteBuffers(1, &ebo);
     glDeleteBuffers(1, &vbo);
     glDeleteBuffers(1, &ssbo);
+    glDeleteBuffers(1, &ubo);
 
     ImGui::SaveIniSettingsToDisk(imGuiIni.c_str());
     ImGui_ImplOpenGL3_Shutdown();

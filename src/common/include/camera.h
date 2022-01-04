@@ -45,8 +45,10 @@ namespace OpenGL {
             [[nodiscard]] float GetNearPlaneDistance() const;
             [[nodiscard]] float GetFarPlaneDistance() const;
 
+            [[nodiscard]] bool IsDirty() const;
+
         private:
-            void CalculateMatrix();
+            void RecalculateMatrices();
 
             glm::mat4 cameraTransform_;
             glm::mat4 viewTransform_;
