@@ -12,7 +12,7 @@ namespace OpenGL {
 
         // Dielectric material properties.
         float refractionProbability = 1.0f;
-        glm::vec3 absorbance = glm::vec3(0.1f);
+        glm::vec3 absorbance = glm::vec3(1.0f, 0.0f, 0.0f);
         float refractivity = 0.0f;
 
         // Metallic material properties.

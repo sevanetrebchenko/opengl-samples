@@ -59,7 +59,7 @@ struct OrthonormalBasis {
 
 
 
-layout (std140, binding = 0) uniform GlobalData {
+layout(std140, binding = 0) uniform GlobalData {
     // Camera information.
     mat4 inverseProjectionMatrix;
     mat4 inverseViewMatrix;
@@ -73,12 +73,13 @@ layout (std140, binding = 1) readonly buffer ObjectData {
     Sphere spheres[256];
 } objectData;
 
-uniform samplerCube skyboxTexture;
-uniform uint frameCounter;
+layout(binding = 0, rgba32f) readonly uniform image2D previousFrameImage;
+layout(binding = 1) uniform samplerCube skyboxTexture;
+uniform int frameCounter;
 uniform int samplesPerPixel;
 uniform int numRayBounces;
 
-out vec4 fragColor;
+layout (location = 0) out vec4 fragColor;
 
 
 
@@ -412,7 +413,7 @@ vec3 Radiance(uint rngState, Ray ray) {
 
 void main() {
     vec3 color = vec3(0.0f);
-    uint rngState = uint(gl_FragCoord.x * 1973 + gl_FragCoord.y * 9277 + frameCounter * 26699) | uint(1);
+    uint rngState = uint(gl_FragCoord.x * 1973 + gl_FragCoord.y * 9277 + frameCounter * 2699) | uint(1);
 
     for (int i = 0; i < samplesPerPixel; ++i) {
         // Generate random sub-pixel offset for antialiasing.
@@ -424,6 +425,10 @@ void main() {
     }
 
     color /= samplesPerPixel;
+
+    vec3 lastFrameColor = imageLoad(previousFrameImage, ivec2(gl_FragCoord.xy)).rgb;
+    color = mix(lastFrameColor, color, 1.0f / (frameCounter));
+
     fragColor = vec4(color, 1.0f);
 }
 

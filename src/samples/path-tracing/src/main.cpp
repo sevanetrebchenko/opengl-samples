@@ -125,6 +125,42 @@ int main() {
 
     glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
+    GLuint frame1;
+    glGenTextures(1, &frame1);
+    glBindTexture(GL_TEXTURE_2D, frame1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    GLuint frame2;
+    glGenTextures(1, &frame2);
+    glBindTexture(GL_TEXTURE_2D, frame2);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Depth buffer.
+    GLuint rbo;
+    glGenRenderbuffers(1, &rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+    // Initialize custom framebuffer.
+    GLuint fbo;
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame1, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame2, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "Failed to initialize custom framebuffer." << std::endl;
+        return 1;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    std::vector<GLenum> drawBuffers(1);
+
     // Initialize global data UBO.
     GLuint ubo;
     glGenBuffers(1, &ubo);
@@ -189,12 +225,24 @@ int main() {
         { 1.0f, -1.0f, 0.0f },
         { 1.0f, 1.0f, 0.0f }
     };
+    std::vector<glm::vec2> uv = {
+        { 0.0f, 1.0f },
+        { 0.0f, 0.0f },
+        { 1.0f, 0.0f },
+        { 1.0f, 1.0f },
+    };
     std::vector<unsigned> indices = { 0, 1, 2, 0, 2, 3 };
 
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    GLuint verticesVBO;
+    glGenBuffers(1, &verticesVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, verticesVBO);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertices[0]), vertices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    GLuint uvVBO;
+    glGenBuffers(1, &uvVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, uvVBO);
+    glBufferData(GL_ARRAY_BUFFER, uv.size() * sizeof(uv[0]), uv.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     GLuint ebo;
@@ -207,10 +255,14 @@ int main() {
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
 
-    // Attach VBO.
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    // Attach VBOs.
+    glBindBuffer(GL_ARRAY_BUFFER, verticesVBO);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), nullptr);
+
+    glBindBuffer(GL_ARRAY_BUFFER, uvVBO);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), nullptr);
 
     // Attach EBO.
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
@@ -229,11 +281,11 @@ int main() {
 
     glBindVertexArray(vao);
 
-    glActiveTexture(GL_TEXTURE0);
-    shader.SetUniform("skybox", 0);
+    glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_CUBE_MAP, skybox);
+    shader.SetUniform("skyboxTexture", 1);
 
-    unsigned frameCounter = 0;
+    int frameCounter = 0;
 
     while ((glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS) && (glfwWindowShouldClose(window) == 0)) {
         glfwPollEvents();
@@ -346,19 +398,37 @@ int main() {
 //            bufferOffset += numBytes;
 //        }
 
-
-
         shader.SetUniform("cameraPosition", camera.GetPosition());
         shader.SetUniform("inverseProjectionMatrix", glm::inverse(camera.GetPerspectiveTransform()));
         shader.SetUniform("inverseViewMatrix", glm::inverse(camera.GetViewTransform()));
         shader.SetUniform("imageResolution", glm::vec2(width, height));
-        shader.SetUniform("frame", ++frameCounter);
+        shader.SetUniform("frameCounter", frameCounter);
         shader.SetUniform("samplesPerPixel", 16);
         shader.SetUniform("numRayBounces", 16);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+        // Determine which texture is the previous frame and which texture is the current frame.
+        // Previous frame is readonly for denoising, current frame will be placed into the swapchain for rendering.
+        glActiveTexture(GL_TEXTURE0);
+        glBindImageTexture(0, (frameCounter + 1) % 2 == 0 ? frame1 : frame2, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
+        shader.SetUniform("previousFrameImage", 0);
+
+        unsigned currentFrameIndex = (frameCounter % 2);
+        drawBuffers[0] = GL_COLOR_ATTACHMENT0 + currentFrameIndex;
+        glDrawBuffers(1, drawBuffers.data());
 
         // Rendering.
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);
+
+        // Copy render data back to default framebuffer.
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+
+        // Bind texture to read from.
+        glBindTexture(GL_TEXTURE_2D, currentFrameIndex == 0 ? frame1 : frame2);
+        glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
         // Start the Dear ImGui frame.
         ImGui_ImplOpenGL3_NewFrame();
@@ -390,17 +460,15 @@ int main() {
         }
 
         glfwSwapBuffers(window);
-    }
 
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
-    glBindVertexArray(0);
-    shader.Unbind();
+        ++frameCounter;
+    }
 
     // Shutdown.
     glDeleteVertexArrays(1, &vao);
     glDeleteBuffers(1, &ebo);
-    glDeleteBuffers(1, &vbo);
+    glDeleteBuffers(1, &uvVBO);
+    glDeleteBuffers(1, &verticesVBO);
     glDeleteBuffers(1, &ssbo);
     glDeleteBuffers(1, &ubo);
 
