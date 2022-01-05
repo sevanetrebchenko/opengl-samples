@@ -125,16 +125,19 @@ int main() {
 
     glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
+    std::size_t textureSize = width * height * 4; // RGBA.
+    std::vector<float> data(textureSize, 0.0f);
+
     GLuint frame1;
     glGenTextures(1, &frame1);
     glBindTexture(GL_TEXTURE_2D, frame1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, data.data());
     glBindTexture(GL_TEXTURE_2D, 0);
 
     GLuint frame2;
     glGenTextures(1, &frame2);
     glBindTexture(GL_TEXTURE_2D, frame2);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, data.data());
     glBindTexture(GL_TEXTURE_2D, 0);
 
     // Depth buffer.
@@ -183,14 +186,13 @@ int main() {
     std::vector<OpenGL::Sphere> spheres(numSpheres);
     std::vector<OpenGL::AABB> aabbs(numAABBs);
 
-    spheres[2].position = glm::vec3(0.0f, -20.0f, 0.0f);
-    spheres[2].radius = 10.0f;
-    spheres[2].material.reflectionProbability = 1.0f;
-    spheres[2].material.refractionProbability = 0.0f;
-
     spheres[1].position = glm::vec3(0.0f, 11.0f, 0.0f);
+    spheres[1].radius = 1.0f;
     spheres[1].material.emissive = glm::vec3(1.0f);
     spheres[1].material.reflectionProbability = 0.0f;
+
+    aabbs[0].minimum = glm::vec4(-6.0f, -10.0f, -6.0f, 1.0f);
+    aabbs[0].maximum = glm::vec4(6.0f, -5.0f, 6.0f, 1.0f);
 
     GLuint ssbo;
     glGenBuffers(1, &ssbo);
@@ -198,13 +200,13 @@ int main() {
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo); // Binding 1.
 
     // Number of active spheres (int, vec4 with padding), array of 256 spheres.
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) + numSpheres * sizeof(OpenGL::Sphere), nullptr, GL_STATIC_DRAW);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) + numSpheres * sizeof(OpenGL::Sphere) + sizeof(glm::vec4) + numAABBs * sizeof(OpenGL::AABB), nullptr, GL_STATIC_DRAW);
 
     {
         int offset = 0;
 
         // Set sphere object data.
-        int numActiveSpheres = 3;
+        int numActiveSpheres = 2;
         glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveSpheres);
         offset += sizeof(glm::vec4);
 
@@ -213,7 +215,17 @@ int main() {
             offset += sizeof(OpenGL::Sphere);
         }
 
-        offset += (numActiveSpheres - numSpheres) * sizeof(OpenGL::Sphere);
+        offset += (numSpheres - numActiveSpheres) * sizeof(OpenGL::Sphere);
+
+        // Set AABB object data.
+        int numActiveAABBs = 1;
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveAABBs);
+        offset += sizeof(glm::vec4);
+
+        for (int i = 0; i < numActiveAABBs; ++i) {
+            glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::AABB), &aabbs[i]);
+            offset += sizeof(OpenGL::AABB);
+        }
     }
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
@@ -280,10 +292,6 @@ int main() {
     shader.Bind();
 
     glBindVertexArray(vao);
-
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, skybox);
-    shader.SetUniform("skyboxTexture", 1);
 
     int frameCounter = 0;
 
@@ -398,10 +406,6 @@ int main() {
 //            bufferOffset += numBytes;
 //        }
 
-        shader.SetUniform("cameraPosition", camera.GetPosition());
-        shader.SetUniform("inverseProjectionMatrix", glm::inverse(camera.GetPerspectiveTransform()));
-        shader.SetUniform("inverseViewMatrix", glm::inverse(camera.GetViewTransform()));
-        shader.SetUniform("imageResolution", glm::vec2(width, height));
         shader.SetUniform("frameCounter", frameCounter);
         shader.SetUniform("samplesPerPixel", 16);
         shader.SetUniform("numRayBounces", 16);
@@ -410,9 +414,14 @@ int main() {
 
         // Determine which texture is the previous frame and which texture is the current frame.
         // Previous frame is readonly for denoising, current frame will be placed into the swapchain for rendering.
+        int previousFrameImageIndex = (frameCounter + 1) % 2;
         glActiveTexture(GL_TEXTURE0);
-        glBindImageTexture(0, (frameCounter + 1) % 2 == 0 ? frame1 : frame2, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
+        glBindImageTexture(0, previousFrameImageIndex == 0 ? frame1 : frame2, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
         shader.SetUniform("previousFrameImage", 0);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, skybox);
+        shader.SetUniform("skyboxTexture", 1);
 
         unsigned currentFrameIndex = (frameCounter % 2);
         drawBuffers[0] = GL_COLOR_ATTACHMENT0 + currentFrameIndex;
@@ -421,6 +430,8 @@ int main() {
         // Rendering.
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         // Copy render data back to default framebuffer.
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);

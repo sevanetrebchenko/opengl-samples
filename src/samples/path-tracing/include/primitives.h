@@ -6,6 +6,8 @@
 
 namespace OpenGL {
 
+    // Structs padded to a size of glm::vec4 (16 bytes) for GPU buffer alignment.
+
     struct alignas(16) Sphere {
         glm::vec3 position = glm::vec3(0.0f);
         float radius = 5.0f;
@@ -13,8 +15,7 @@ namespace OpenGL {
         Material material;
     };
 
-    // Struct padded to a size of glm::vec4 (16 bytes) for UBO alignment.
-    struct AABB {
+    struct alignas(16) AABB {
         glm::vec4 minimum;
         glm::vec4 maximum;
 
