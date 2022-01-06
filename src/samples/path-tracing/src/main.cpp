@@ -299,7 +299,7 @@ int main() {
     OpenGL::Shader pathTracingShader { "Path Tracing", { "src/samples/path-tracing/assets/shaders/fsq.vert",
                                                          "src/samples/path-tracing/assets/shaders/path_tracing.frag" } };
     OpenGL::Shader fsqShader { "Full Screen Quad", { "src/samples/path-tracing/assets/shaders/fsq.vert",
-                                                     "src/samples/path-tracing/assets/shaders/fsq.frag" } };
+                                                     "src/samples/path-tracing/assets/shaders/post_processing.frag" } };
 
     int frameCounter = 0;
     bool resetLastFrame = false;
@@ -477,10 +477,6 @@ int main() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        current = (float)glfwGetTime();
-        dt = current - previous;
-        previous = current;
-
         // Render ImGui on top of everything.
         // Framework overview.
         if (ImGui::Begin("Overview")) {
@@ -504,6 +500,10 @@ int main() {
         glfwSwapBuffers(window);
 
         ++frameCounter;
+
+        current = (float)glfwGetTime();
+        dt = current - previous;
+        previous = current;
     }
 
     // Shutdown.
