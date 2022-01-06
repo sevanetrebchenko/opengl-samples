@@ -438,7 +438,7 @@ void main() {
     color /= samplesPerPixel;
 
     vec4 lastFrameColor = imageLoad(previousFrameImage, ivec2(gl_FragCoord.xy));
-    float blend = (lastFrameColor.a == 0.0f ) ? 1.0f : 1.0f / (1.0f + (1.0f / lastFrameColor.a));
+    float blend = (lastFrameColor.a == 0.0f) ? 1.0f : 1.0f / (1.0f + (1.0f / lastFrameColor.a));
     color = mix(lastFrameColor.rgb, color, blend);
 
     fragColor = vec4(color, blend);

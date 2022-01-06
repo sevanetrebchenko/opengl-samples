@@ -125,13 +125,13 @@ int main() {
 
     glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
-    std::size_t textureSize = width * height * 4; // RGBA.
-    std::vector<float> blankTextureData(textureSize, 0.0f);
+    // RGBA.
+    const std::vector<float> blankTexture(width * height * 4, 0.0f);
 
     GLuint frame1;
     glGenTextures(1, &frame1);
     glBindTexture(GL_TEXTURE_2D, frame1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTextureData.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -139,7 +139,7 @@ int main() {
     GLuint frame2;
     glGenTextures(1, &frame2);
     glBindTexture(GL_TEXTURE_2D, frame2);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTextureData.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -296,13 +296,15 @@ int main() {
     float dt = 0.0f;
 
     // Compile shaders.
-    OpenGL::Shader shader { "Path Tracing Shader", { "src/samples/path-tracing/assets/shaders/fsq.vert",
-                                                     "src/samples/path-tracing/assets/shaders/path_tracing.frag" } };
-    shader.Bind();
-
-    glBindVertexArray(vao);
+    OpenGL::Shader pathTracingShader { "Path Tracing", { "src/samples/path-tracing/assets/shaders/fsq.vert",
+                                                         "src/samples/path-tracing/assets/shaders/path_tracing.frag" } };
+    OpenGL::Shader fsqShader { "Full Screen Quad", { "src/samples/path-tracing/assets/shaders/fsq.vert",
+                                                     "src/samples/path-tracing/assets/shaders/fsq.frag" } };
 
     int frameCounter = 0;
+    bool resetLastFrame = false;
+
+    glBindVertexArray(vao);
 
     while ((glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS) && (glfwWindowShouldClose(window) == 0)) {
         glfwPollEvents();
@@ -312,33 +314,44 @@ int main() {
         const glm::vec3& cameraPosition = camera.GetPosition();
         const glm::vec3& cameraForwardVector = camera.GetForwardVector();
         const glm::vec3& cameraUpVector = camera.GetUpVector();
+
+        bool cameraPositionChanged = false;
+
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
             camera.SetPosition(cameraPosition + cameraSpeed * cameraForwardVector * dt);
+            cameraPositionChanged = true;
         }
 
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
             camera.SetPosition(cameraPosition - cameraSpeed * cameraForwardVector * dt);
+            cameraPositionChanged = true;
         }
 
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
             camera.SetPosition(cameraPosition - glm::normalize(glm::cross(cameraForwardVector, cameraUpVector)) * cameraSpeed * dt);
+            cameraPositionChanged = true;
         }
 
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
             camera.SetPosition(cameraPosition + glm::normalize(glm::cross(cameraForwardVector, cameraUpVector)) * cameraSpeed * dt);
+            cameraPositionChanged = true;
         }
 
         if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
             camera.SetPosition(cameraPosition + cameraSpeed * cameraUpVector * dt);
+            cameraPositionChanged = true;
         }
 
         if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
             camera.SetPosition(cameraPosition - cameraSpeed * cameraUpVector * dt);
+            cameraPositionChanged = true;
         }
 
         // Mouse input.
         static glm::vec2 previousCursorPosition;
         static bool initialInput = true;
+
+        bool cameraLookAtChanged = false;
 
         if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
             glm::dvec2 cursorPosition;
@@ -365,6 +378,10 @@ int main() {
 
             yaw += dx;
             pitch += dy;
+
+            if (glm::abs(dx) > std::numeric_limits<float>::epsilon() || glm::abs(dy) > std::numeric_limits<float>::epsilon()) {
+                cameraLookAtChanged = true;
+            }
 
             // Prevent camera forward vector to be parallel to camera up vector (0, 1, 0).
             if (pitch > limit) {
@@ -402,66 +419,58 @@ int main() {
             glBindBuffer(GL_UNIFORM_BUFFER, 0);
         }
 
-        // Reset denoising textures.
-        if (isCameraDirty) {
-            glBindTexture(GL_TEXTURE_2D, frame1);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTextureData.data());
-            glBindTexture(GL_TEXTURE_2D, 0);
+        pathTracingShader.Bind();
 
-            glBindTexture(GL_TEXTURE_2D, frame2);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTextureData.data());
+        pathTracingShader.SetUniform("frameCounter", frameCounter);
+        pathTracingShader.SetUniform("samplesPerPixel", 16);
+        pathTracingShader.SetUniform("numRayBounces", 16);
+
+        int previousFrameIndex = (frameCounter + 1) % 2;
+        int currentFrameIndex = (frameCounter % 2);
+
+        GLuint previousFrameImage = previousFrameIndex == 0 ? frame1 : frame2;
+        GLuint currentFrameImage = currentFrameIndex == 0 ? frame1 : frame2;
+
+        // Reset the previous frame texture.
+        if (cameraLookAtChanged || cameraPositionChanged) {
+            glBindTexture(GL_TEXTURE_2D, previousFrameImage);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
             glBindTexture(GL_TEXTURE_2D, 0);
         }
-
-        // Update models.
-        std::size_t bufferOffset = 0;
-        glm::mat4 cameraTransform = camera.GetCameraTransform();
-
-//        for (OpenGL::Model& model : models) {
-//            std::size_t numBytes = static_cast<long>(model.triangles.size() * sizeof(OpenGL::Triangle));
-//
-//            if (model.IsDirty()) {
-//                model.Recalculate(cameraTransform);
-//                glBufferSubData(GL_SHADER_STORAGE_BUFFER, bufferOffset, numBytes, model.triangles.data());
-//            }
-//
-//            bufferOffset += numBytes;
-//        }
-
-        shader.SetUniform("frameCounter", frameCounter);
-        shader.SetUniform("samplesPerPixel", 16);
-        shader.SetUniform("numRayBounces", 16);
 
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
         // Determine which texture is the previous frame and which texture is the current frame.
-        // Previous frame is readonly for denoising, current frame will be placed into the swapchain for rendering.
-        int previousFrameImageIndex = (frameCounter + 1) % 2;
+        // Previous frame is readonly for de-noising, current frame will be copied into the default framebuffer for rendering.
         glActiveTexture(GL_TEXTURE0);
-        glBindImageTexture(0, previousFrameImageIndex == 0 ? frame1 : frame2, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
-        shader.SetUniform("previousFrameImage", 0);
+        glBindImageTexture(0, previousFrameImage, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
+        pathTracingShader.SetUniform("previousFrameImage", 0);
 
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_CUBE_MAP, skybox);
-        shader.SetUniform("skyboxTexture", 1);
+        pathTracingShader.SetUniform("skyboxTexture", 1);
 
-        unsigned currentFrameIndex = (frameCounter % 2);
         drawBuffers[0] = GL_COLOR_ATTACHMENT0 + currentFrameIndex;
         glDrawBuffers(1, drawBuffers.data());
 
-        // Rendering.
+        // Render to FBO attachment.
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        pathTracingShader.Unbind();
 
-        // Copy render data back to default framebuffer.
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+        // Render final output to full screen quad.
+        fsqShader.Bind();
 
-        // Bind texture to read from.
-        glBindTexture(GL_TEXTURE_2D, currentFrameIndex == 0 ? frame1 : frame2);
-        glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glActiveTexture(GL_TEXTURE0);
+        glBindImageTexture(0, currentFrameImage, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
+        pathTracingShader.SetUniform("finalImage", 0);
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);
+
+        fsqShader.Unbind();
 
         // Start the Dear ImGui frame.
         ImGui_ImplOpenGL3_NewFrame();
