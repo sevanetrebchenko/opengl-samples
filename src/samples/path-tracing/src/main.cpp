@@ -194,7 +194,7 @@ int main() {
 
     spheres[1].position = glm::vec3(0.0f, 11.0f, 0.0f);
     spheres[1].radius = 1.0f;
-    spheres[1].material.emissive = glm::vec3(1.0f);
+    spheres[1].material.emissive = glm::vec3(10.0f);
     spheres[1].material.reflectionProbability = 1.0f;
 
     aabbs[0].minimum = glm::vec4(-6.0f, 6.0f, -6.0f, 1.0f);
@@ -514,6 +514,8 @@ int main() {
         glActiveTexture(GL_TEXTURE0);
         glBindImageTexture(0, currentFrameImage, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
         postProcessingShader.SetUniform("finalImage", 0);
+
+        postProcessingShader.SetUniform("exposure", 1.0f);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);
