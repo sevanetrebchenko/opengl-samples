@@ -51,6 +51,16 @@ namespace OpenGL {
         isDirty_ = true;
     }
 
+    void Camera::SetAspectRatio(float width, float height) {
+        aspectRatio_ = width / height;
+        isDirty_ = true;
+    }
+
+    void Camera::SetAspectRatio(float aspectRatio) {
+        aspectRatio_ = aspectRatio;
+        isDirty_ = true;
+    }
+
     void Camera::SetEulerAngles(const glm::vec3 &eulerAngles) {
         eulerAngles_ = glm::radians(eulerAngles);
 
@@ -124,6 +134,14 @@ namespace OpenGL {
         return nearPlaneDistance_;
     }
 
+    bool Camera::IsDirty() const {
+        return isDirty_;
+    }
+
+    float Camera::GetAspectRatio() const {
+        return aspectRatio_;
+    }
+
     float Camera::GetFarPlaneDistance() const {
         return farPlaneDistance_;
     }
@@ -133,10 +151,6 @@ namespace OpenGL {
         perspectiveTransform_ = glm::perspective(glm::radians(fov_), aspectRatio_, nearPlaneDistance_, farPlaneDistance_);
         cameraTransform_ = perspectiveTransform_ * viewTransform_;
         isDirty_ = false;
-    }
-
-    bool Camera::IsDirty() const {
-        return isDirty_;
     }
 
 }

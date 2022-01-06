@@ -22,6 +22,9 @@ namespace OpenGL {
 
             void SetFOVAngle(float fov);
 
+            void SetAspectRatio(float width, float height);
+            void SetAspectRatio(float aspectRatio);
+
             // Assumes degrees.
             void SetEulerAngles(const glm::vec3& eulerAngles);
             void SetEulerAngles(float pitch, float yaw, float roll);
@@ -44,6 +47,8 @@ namespace OpenGL {
 
             [[nodiscard]] float GetNearPlaneDistance() const;
             [[nodiscard]] float GetFarPlaneDistance() const;
+
+            [[nodiscard]] float GetAspectRatio() const;
 
             [[nodiscard]] bool IsDirty() const;
 

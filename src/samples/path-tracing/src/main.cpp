@@ -126,7 +126,8 @@ int main() {
     glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
     // RGBA.
-    const std::vector<float> blankTexture(width * height * 4, 0.0f);
+    std::vector<float> blankTexture;
+    blankTexture.resize(width * height * 4, 0.0f);
 
     GLuint frame1;
     glGenTextures(1, &frame1);
@@ -174,12 +175,8 @@ int main() {
     glBindBuffer(GL_UNIFORM_BUFFER, ubo);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo); // Binding 0.
 
-    // Inverse camera transforms (2x mat4), camera position (vec3, vec4 with padding), image resolution (vec2, vec4 with padding).
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 2 + sizeof(glm::vec4) + sizeof(glm::vec4), nullptr, GL_STATIC_DRAW);
-
-    // Image resolution stays constant throughout the lifetime of the application (for now).
-    glm::vec2 imageResolution = glm::vec2(width, height);
-    glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 2 + sizeof(glm::vec4), sizeof(glm::vec2), &imageResolution);
+    // Inverse camera transforms (2x mat4), camera position (vec3, vec4 with padding).
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 2 + sizeof(glm::vec4), nullptr, GL_STATIC_DRAW);
 
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
@@ -298,19 +295,70 @@ int main() {
     // Compile shaders.
     OpenGL::Shader pathTracingShader { "Path Tracing", { "src/samples/path-tracing/assets/shaders/fsq.vert",
                                                          "src/samples/path-tracing/assets/shaders/path_tracing.frag" } };
-    OpenGL::Shader fsqShader { "Full Screen Quad", { "src/samples/path-tracing/assets/shaders/fsq.vert",
-                                                     "src/samples/path-tracing/assets/shaders/post_processing.frag" } };
+    OpenGL::Shader postProcessingShader { "Post Processing", { "src/samples/path-tracing/assets/shaders/fsq.vert",
+                                                               "src/samples/path-tracing/assets/shaders/post_processing.frag" } };
 
     int frameCounter = 0;
-    bool resetLastFrame = false;
+    int samplesPerPixel = 4;
+    int numRayBounces = 16;
 
     glBindVertexArray(vao);
 
     while ((glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS) && (glfwWindowShouldClose(window) == 0)) {
         glfwPollEvents();
 
+        // Handle resizing the window.
+        int tempWidth;
+        int tempHeight;
+        glfwGetFramebufferSize(window, &tempWidth, &tempHeight);
+
+        if (tempWidth != width || tempHeight != height) {
+            // Window dimensions changed, resize content.
+            width = tempWidth;
+            height = tempHeight;
+
+            blankTexture.resize(width * height * 4, 0.0f); // Inserts or deletes elements appropriately.
+
+
+            glBindTexture(GL_TEXTURE_2D, frame1);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            glBindTexture(GL_TEXTURE_2D, frame2);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
+            glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+            // Update viewport.
+            glViewport(0, 0, width, height);
+
+            // Update camera.
+            float aspectRatio = static_cast<float>(width) / static_cast<float>(height);
+            camera.SetAspectRatio(aspectRatio);
+
+            // Reconstruct custom frame buffer.
+            // Note: not sure if this fully necessary, resizing doesn't happen every frame so the performance overhead is negligible.
+            glDeleteFramebuffers(1, &fbo);
+
+            glGenFramebuffers(1, &fbo);
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame1, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame2, 0);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+                std::cerr << "Failed to reinitialize custom framebuffer on window resize." << std::endl;
+                break;
+            }
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+
         // Moving camera.
-        static const float cameraSpeed = 10.0f;
+        const float cameraSpeed = 10.0f;
         const glm::vec3& cameraPosition = camera.GetPosition();
         const glm::vec3& cameraForwardVector = camera.GetForwardVector();
         const glm::vec3& cameraUpVector = camera.GetUpVector();
@@ -422,8 +470,8 @@ int main() {
         pathTracingShader.Bind();
 
         pathTracingShader.SetUniform("frameCounter", frameCounter);
-        pathTracingShader.SetUniform("samplesPerPixel", 16);
-        pathTracingShader.SetUniform("numRayBounces", 16);
+        pathTracingShader.SetUniform("samplesPerPixel", samplesPerPixel);
+        pathTracingShader.SetUniform("numRayBounces", numRayBounces);
 
         int previousFrameIndex = (frameCounter + 1) % 2;
         int currentFrameIndex = (frameCounter % 2);
@@ -461,16 +509,16 @@ int main() {
         pathTracingShader.Unbind();
 
         // Render final output to full screen quad.
-        fsqShader.Bind();
+        postProcessingShader.Bind();
 
         glActiveTexture(GL_TEXTURE0);
         glBindImageTexture(0, currentFrameImage, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
-        pathTracingShader.SetUniform("finalImage", 0);
+        postProcessingShader.SetUniform("finalImage", 0);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);
 
-        fsqShader.Unbind();
+        postProcessingShader.Unbind();
 
         // Start the Dear ImGui frame.
         ImGui_ImplOpenGL3_NewFrame();

@@ -64,8 +64,6 @@ layout(std140, binding = 0) uniform GlobalData {
     mat4 inverseProjectionMatrix;
     mat4 inverseViewMatrix;
     vec3 cameraPosition;
-
-    vec2 imageResolution;
 } globalData;
 
 layout (std140, binding = 1) readonly buffer ObjectData {
