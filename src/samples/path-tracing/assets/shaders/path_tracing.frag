@@ -209,7 +209,7 @@ bool Intersects(Ray ray, AABB aabb, float tMin, float tMax, inout HitRecord hitR
 
     // https://gist.github.com/Shtille/1f98c649abeeb7a18c5a56696546d3cf
     vec3 center = (aabb.minimum + aabb.maximum) * 0.5;
-    vec3 dimensions = (aabb.maximum - aabb.minimum) * 0.5;
+    vec3 dimensions = abs(aabb.maximum - aabb.minimum) * 0.5;
 
     vec3 pc = hitRecord.point - center;
 
@@ -219,8 +219,10 @@ bool Intersects(Ray ray, AABB aabb, float tMin, float tMax, inout HitRecord hitR
     normal += vec3(0.0, 0.0, sign(pc.z)) * step(abs(abs(pc.z) - dimensions.z), EPSILON);
 
     // Ensure normal always points against the incident ray.
-    hitRecord.normal = normalize(normal);
-    hitRecord.fromInside = dot(ray.direction, hitRecord.normal) > 0.0;
+    normal = normalize(normal);
+
+    hitRecord.fromInside = dot(ray.direction, normal) > 0.0;
+    hitRecord.normal = hitRecord.fromInside ? -normal : normal;
 
     hitRecord.material = aabb.material;
 
@@ -269,7 +271,7 @@ float SchlickApproximation(float cosTheta, float n1, float n2) {
 
 // n1 - ior of the material the ray originated in.
 // n2 - ior of the material the ray is entering.
-float FresnelReflectAmount(vec3 n, vec3 v, float n1, float n2) {
+float FresnelReflectAmount(vec3 v, vec3 n, float n1, float n2) {
     float cosTheta = dot(-v, n);
 
     if (n2 < n1) {
@@ -329,12 +331,10 @@ vec3 Radiance(uint rngState, Ray ray) {
                     n2 = material.ior;
                 }
 
-                float t = FresnelReflectAmount(n, v, n1, n2);
-                reflectionProbability = mix(material.reflectionProbability, 1.0, t);
+                reflectionProbability = mix(material.reflectionProbability, 1.0, FresnelReflectAmount(v, n, n1, n2));
 
                 // Need to maintain the same probability ratio for refraction and diffuse later.
-                float scalingFactor = (1.0 - reflectionProbability) / (1.0 - material.reflectionProbability);
-                refractionProbability *= scalingFactor;
+                refractionProbability *= (1.0 - reflectionProbability) / (1.0 - material.reflectionProbability);
             }
 
             // Randomly determine which ray to follow based on material properties.
@@ -426,24 +426,21 @@ void main() {
 
     ivec2 resolution = imageSize(previousFrameImage);
 
-    for (int i = 0; i < 1; ++i) {
+    for (int i = 0; i < samplesPerPixel; ++i) {
         // Generate random sub-pixel offset for antialiasing.
-        vec2 offset = vec2(0.0f);//vec2(RandomFloat(rngState, 0.0, 1.0), RandomFloat(rngState, 0.0, 1.0)) - 0.5;
-        vec2 ndc = (gl_FragCoord.xy + offset) / globalData.imageResolution * 2.0 - 1.0;
+        vec2 offset = vec2(RandomFloat(rngState, 0.0, 1.0), RandomFloat(rngState, 0.0, 1.0)) - 0.5;
+        vec2 ndc = (gl_FragCoord.xy + offset) / resolution * 2.0 - 1.0;
 
         Ray ray = GetWorldSpaceRay(ndc);
         color += Radiance(rngState, ray);
     }
 
-    color /= 1;
+    color /= samplesPerPixel;
 
     vec4 lastFrameColor = imageLoad(previousFrameImage, ivec2(gl_FragCoord.xy));
+    float blend = (lastFrameColor.a == 0.0f ) ? 1.0f : 1.0f / (1.0f + (1.0f / lastFrameColor.a));
+    color = mix(lastFrameColor.rgb, color, blend);
 
-    if (lastFrameColor.a > 0.0) {
-        color = mix(lastFrameColor.rgb, color, 1.0 / (frameCounter + 1));
-    }
-
-
-    fragColor = vec4(color, 1.0);
+    fragColor = vec4(color, blend);
 }
 

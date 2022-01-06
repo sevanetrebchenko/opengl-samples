@@ -126,18 +126,22 @@ int main() {
     glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
     std::size_t textureSize = width * height * 4; // RGBA.
-    std::vector<float> data(textureSize, 0.0f);
+    std::vector<float> blankTextureData(textureSize, 0.0f);
 
     GLuint frame1;
     glGenTextures(1, &frame1);
     glBindTexture(GL_TEXTURE_2D, frame1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, data.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTextureData.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
 
     GLuint frame2;
     glGenTextures(1, &frame2);
     glBindTexture(GL_TEXTURE_2D, frame2);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, data.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTextureData.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
 
     // Depth buffer.
@@ -186,13 +190,18 @@ int main() {
     std::vector<OpenGL::Sphere> spheres(numSpheres);
     std::vector<OpenGL::AABB> aabbs(numAABBs);
 
+    spheres[2].position = glm::vec3(0.0f, -20.0f, 0.0f);
+    spheres[2].radius = 10.0f;
+    spheres[2].material.reflectionProbability = 0.1f;
+    spheres[2].material.refractionProbability = 0.9f;
+
     spheres[1].position = glm::vec3(0.0f, 11.0f, 0.0f);
     spheres[1].radius = 1.0f;
     spheres[1].material.emissive = glm::vec3(1.0f);
-    spheres[1].material.reflectionProbability = 0.0f;
+    spheres[1].material.reflectionProbability = 1.0f;
 
-    aabbs[0].minimum = glm::vec4(-6.0f, -10.0f, -6.0f, 1.0f);
-    aabbs[0].maximum = glm::vec4(6.0f, -5.0f, 6.0f, 1.0f);
+    aabbs[0].minimum = glm::vec4(-6.0f, 6.0f, -6.0f, 1.0f);
+    aabbs[0].maximum = glm::vec4(6.0f, 10.0f, 6.0f, 1.0f);
 
     GLuint ssbo;
     glGenBuffers(1, &ssbo);
@@ -206,7 +215,7 @@ int main() {
         int offset = 0;
 
         // Set sphere object data.
-        int numActiveSpheres = 2;
+        int numActiveSpheres = 3;
         glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveSpheres);
         offset += sizeof(glm::vec4);
 
@@ -218,7 +227,7 @@ int main() {
         offset += (numSpheres - numActiveSpheres) * sizeof(OpenGL::Sphere);
 
         // Set AABB object data.
-        int numActiveAABBs = 1;
+        int numActiveAABBs = 0;
         glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveAABBs);
         offset += sizeof(glm::vec4);
 
@@ -372,7 +381,9 @@ int main() {
         }
 
         // Update global data.
-        if (camera.IsDirty()) {
+        bool isCameraDirty = camera.IsDirty();
+
+        if (isCameraDirty) {
             int offset = 0;
 
             glBindBuffer(GL_UNIFORM_BUFFER, ubo);
@@ -389,6 +400,17 @@ int main() {
             glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), glm::value_ptr(camera.GetPosition()));
 
             glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        }
+
+        // Reset denoising textures.
+        if (isCameraDirty) {
+            glBindTexture(GL_TEXTURE_2D, frame1);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTextureData.data());
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            glBindTexture(GL_TEXTURE_2D, frame2);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTextureData.data());
+            glBindTexture(GL_TEXTURE_2D, 0);
         }
 
         // Update models.
