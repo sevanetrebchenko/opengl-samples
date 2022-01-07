@@ -79,6 +79,8 @@ layout (binding = 1) uniform samplerCube skyboxTexture;
 uniform int frameCounter;
 uniform int samplesPerPixel;
 uniform int numRayBounces;
+uniform float focusDistance;
+uniform float apertureRadius;
 
 layout (location = 0) out vec4 fragColor;
 
@@ -96,6 +98,12 @@ float RandomFloat(inout uint rngState, float min, float max) {
     // 32 bit precision spans from -2147483648 to 2147483647, which is 4294967295 unique values.
     float base = float(PCGHash(rngState)) / 4294967295.0;
     return min + base * (max - min);
+}
+
+vec2 RandomSampleUnitCircle(inout uint rngState) {
+    float theta = RandomFloat(rngState, 0.0f, 1.0f) * 2.0 * PI;
+    float r = sqrt(RandomFloat(rngState, 0.0f, 1.0f));
+    return vec2(r * cos(theta), r * sin(theta));
 }
 
 OrthonormalBasis ConstructONB(vec3 normal) {
@@ -426,10 +434,20 @@ void main() {
 
     for (int i = 0; i < samplesPerPixel; ++i) {
         // Generate random sub-pixel offset for antialiasing.
-        vec2 offset = vec2(RandomFloat(rngState, 0.0, 1.0), RandomFloat(rngState, 0.0, 1.0)) - 0.5;
-        vec2 ndc = (gl_FragCoord.xy + offset) / resolution * 2.0 - 1.0;
+        vec2 subPixelOffset = vec2(RandomFloat(rngState, 0.0, 1.0), RandomFloat(rngState, 0.0, 1.0)) - 0.5;
+        vec2 ndc = (gl_FragCoord.xy + subPixelOffset) / resolution * 2.0 - 1.0;
 
-        Ray ray = GetWorldSpaceRay(ndc);
+        Ray ray = GetWorldSpaceRay(ndc); // Ray
+
+        // Everything in the virtual film plane 'focusDistance' away from the camera eye position is in perfect focus.
+        vec3 focalPoint = ray.origin + ray.direction * focusDistance;
+
+        // Jittering the start of the ray based on the aperture size increases the effect of depth of field (DOF).
+        vec2 jitter = apertureRadius * RandomSampleUnitCircle(rngState);
+
+        ray.origin = (globalData.inverseViewMatrix * vec4(jitter, 0.0, 1.0)).xyz;
+        ray.direction = normalize(focalPoint - ray.origin);
+
         color += Radiance(rngState, ray);
     }
 

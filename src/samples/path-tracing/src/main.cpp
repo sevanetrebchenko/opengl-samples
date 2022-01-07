@@ -80,6 +80,11 @@ int main() {
     // Initialize camera.
     OpenGL::Camera camera { width, height };
     camera.SetPosition(glm::vec3(0.0f, 0.0f, 10.0f));
+
+    float exposure = 1.0f;
+    float apertureRadius = 2.0f;
+    float focusDistance = glm::distance(camera.GetPosition(), glm::vec3(0.0f));
+
     glViewport(0, 0, width, height);
 
     // Initialize skybox.
@@ -161,7 +166,7 @@ int main() {
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "Failed to initialize custom framebuffer." << std::endl;
+        std::cerr << "Failed to initialize custom framebuffer on startup." << std::endl;
         return 1;
     }
 
@@ -181,24 +186,13 @@ int main() {
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
     // Initialize scene objects.
-    int numSpheres = 256;
-    int numAABBs = 256;
+    const int numSpheres = 256;
+    const int numAABBs = 256;
 
     std::vector<OpenGL::Sphere> spheres(numSpheres);
     std::vector<OpenGL::AABB> aabbs(numAABBs);
 
-    spheres[2].position = glm::vec3(0.0f, -20.0f, 0.0f);
-    spheres[2].radius = 10.0f;
-    spheres[2].material.reflectionProbability = 0.1f;
-    spheres[2].material.refractionProbability = 0.9f;
 
-    spheres[1].position = glm::vec3(0.0f, 11.0f, 0.0f);
-    spheres[1].radius = 1.0f;
-    spheres[1].material.emissive = glm::vec3(10.0f);
-    spheres[1].material.reflectionProbability = 1.0f;
-
-    aabbs[0].minimum = glm::vec4(-6.0f, 6.0f, -6.0f, 1.0f);
-    aabbs[0].maximum = glm::vec4(6.0f, 10.0f, 6.0f, 1.0f);
 
     GLuint ssbo;
     glGenBuffers(1, &ssbo);
@@ -304,8 +298,17 @@ int main() {
 
     glBindVertexArray(vao);
 
+    // For the best visual clarity, denoising textures need to be reset when anything in the scene configuration changes.
+    // This includes, but is not limited to, properties of the camera and properties of path tracing.
+    bool resetRenderTargets = false;
+
     while ((glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS) && (glfwWindowShouldClose(window) == 0)) {
         glfwPollEvents();
+
+        // Start the Dear ImGui frame.
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
 
         // Handle resizing the window.
         int tempWidth;
@@ -319,7 +322,7 @@ int main() {
 
             blankTexture.resize(width * height * 4, 0.0f); // Inserts or deletes elements appropriately.
 
-
+            // Reallocate FBO attachments with updated data storage size.
             glBindTexture(GL_TEXTURE_2D, frame1);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
             glBindTexture(GL_TEXTURE_2D, 0);
@@ -331,13 +334,6 @@ int main() {
             glBindRenderbuffer(GL_RENDERBUFFER, rbo);
             glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
             glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-            // Update viewport.
-            glViewport(0, 0, width, height);
-
-            // Update camera.
-            float aspectRatio = static_cast<float>(width) / static_cast<float>(height);
-            camera.SetAspectRatio(aspectRatio);
 
             // Reconstruct custom frame buffer.
             // Note: not sure if this fully necessary, resizing doesn't happen every frame so the performance overhead is negligible.
@@ -355,6 +351,13 @@ int main() {
             }
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            // Update viewport.
+            glViewport(0, 0, width, height);
+
+            // Update camera.
+            float aspectRatio = static_cast<float>(width) / static_cast<float>(height);
+            camera.SetAspectRatio(aspectRatio);
         }
 
         // Moving camera.
@@ -399,7 +402,7 @@ int main() {
         static glm::vec2 previousCursorPosition;
         static bool initialInput = true;
 
-        bool cameraLookAtChanged = false;
+        bool cameraOrientationChanged = false;
 
         if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
             glm::dvec2 cursorPosition;
@@ -428,7 +431,7 @@ int main() {
             pitch += dy;
 
             if (glm::abs(dx) > std::numeric_limits<float>::epsilon() || glm::abs(dy) > std::numeric_limits<float>::epsilon()) {
-                cameraLookAtChanged = true;
+                cameraOrientationChanged = true;
             }
 
             // Prevent camera forward vector to be parallel to camera up vector (0, 1, 0).
@@ -445,9 +448,8 @@ int main() {
             initialInput = true;
         }
 
-        // Update global data.
+        // Update camera transformation matrices.
         bool isCameraDirty = camera.IsDirty();
-
         if (isCameraDirty) {
             int offset = 0;
 
@@ -467,11 +469,93 @@ int main() {
             glBindBuffer(GL_UNIFORM_BUFFER, 0);
         }
 
+        bool imguiInput = false;
+
+        // Sample overview and statistics.
+        if (ImGui::Begin("Sample Overview")) {
+            ImGui::PushStyleColor(ImGuiCol_Text, 0xff999999);
+
+            ImGui::Text("Render time:");
+            ImGui::Text("%.3f ms/frame (%.1f FPS)", dt * 1000.0f, 1.0f / dt);
+
+            ImGui::PopStyleColor();
+        }
+        ImGui::End();
+
+        // Configuration of path tracing options.
+        if (ImGui::Begin("Path Tracing Options")) {
+            ImGui::PushStyleColor(ImGuiCol_Text, 0xff999999);
+
+            ImGui::Text("Samples per pixel:");
+            int tempSamplesPerPixel = samplesPerPixel;
+            if (ImGui::SliderInt("##spp", &tempSamplesPerPixel, 1, 64)) {
+                if (tempSamplesPerPixel != samplesPerPixel) {
+                    samplesPerPixel = tempSamplesPerPixel;
+                    imguiInput = true;
+                }
+            }
+
+            ImGui::Text("Number of ray bounces:");
+            int tempNumRayBounces = numRayBounces;
+            if (ImGui::SliderInt("##numRayBounces", &tempNumRayBounces, 1, 64)) {
+                // Manual input can go outside the valid range.
+                tempNumRayBounces = glm::clamp(tempNumRayBounces, 1, 64);
+
+                if (tempNumRayBounces != numRayBounces) {
+                    numRayBounces = tempNumRayBounces;
+                    imguiInput = true;
+                }
+            }
+
+            ImGui::PopStyleColor();
+        }
+        ImGui::End();
+
+        // Configuration of scene camera.
+        if (ImGui::Begin("Camera Options")) {
+            ImGui::PushStyleColor(ImGuiCol_Text, 0xff999999);
+
+            ImGui::Text("Exposure:");
+            float tempExposure = exposure;
+            if (ImGui::SliderFloat("##exposure", &tempExposure, 0.1f, 5.0f)) {
+                if (glm::abs(tempExposure - exposure) > std::numeric_limits<float>::epsilon()) {
+                    exposure = tempExposure;
+                    imguiInput = true;
+                }
+            }
+
+            ImGui::Text("Aperture Diameter:");
+            float apertureDiameter = apertureRadius * 2.0f;
+            if (ImGui::SliderFloat("##apertureDiameter", &apertureDiameter, 0.0f, 10.0f)) {
+                if (glm::abs(apertureDiameter - (apertureRadius * 2.0f)) > std::numeric_limits<float>::epsilon()) {
+                    apertureRadius = apertureDiameter / 2.0f;
+                    imguiInput = true;
+                }
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("");
+            }
+
+            ImGui::Text("Focus Distance:");
+            float tempFocusDistance = focusDistance;
+            if (ImGui::SliderFloat("##focusDistance", &tempFocusDistance, 2.0f, 100.0f)) {
+                if (glm::abs(tempFocusDistance - focusDistance) > std::numeric_limits<float>::epsilon()) {
+                    focusDistance = tempFocusDistance;
+                    imguiInput = true;
+                }
+            }
+
+            ImGui::PopStyleColor();
+        }
+        ImGui::End();
+
         pathTracingShader.Bind();
 
         pathTracingShader.SetUniform("frameCounter", frameCounter);
         pathTracingShader.SetUniform("samplesPerPixel", samplesPerPixel);
         pathTracingShader.SetUniform("numRayBounces", numRayBounces);
+        pathTracingShader.SetUniform("focusDistance", focusDistance);
+        pathTracingShader.SetUniform("apertureRadius", apertureRadius);
 
         int previousFrameIndex = (frameCounter + 1) % 2;
         int currentFrameIndex = (frameCounter % 2);
@@ -480,7 +564,7 @@ int main() {
         GLuint currentFrameImage = currentFrameIndex == 0 ? frame1 : frame2;
 
         // Reset the previous frame texture.
-        if (cameraLookAtChanged || cameraPositionChanged) {
+        if (cameraPositionChanged || cameraOrientationChanged || imguiInput) {
             glBindTexture(GL_TEXTURE_2D, previousFrameImage);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
             glBindTexture(GL_TEXTURE_2D, 0);
@@ -515,25 +599,12 @@ int main() {
         glBindImageTexture(0, currentFrameImage, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
         postProcessingShader.SetUniform("finalImage", 0);
 
-        postProcessingShader.SetUniform("exposure", 1.0f);
+        postProcessingShader.SetUniform("exposure", exposure);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);
 
         postProcessingShader.Unbind();
-
-        // Start the Dear ImGui frame.
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        // Render ImGui on top of everything.
-        // Framework overview.
-        if (ImGui::Begin("Overview")) {
-            ImGui::Text("Render time:");
-            ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-        }
-        ImGui::End();
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

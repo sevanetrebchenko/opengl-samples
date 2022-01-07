@@ -8,7 +8,7 @@ uniform float exposure;
 
 layout (location = 0) out vec4 fragColor;
 
-// ACES tone mapping curve fit to go from HDR to LDR.
+// ACES tone mapping curve fit to go from HDR to SDR.
 //https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/
 vec3 ACESFilm(vec3 color)
 {
