@@ -79,10 +79,10 @@ int main() {
 
     // Initialize camera.
     OpenGL::Camera camera { width, height };
-    camera.SetPosition(glm::vec3(0.0f, 0.0f, 0.0f));
+    camera.SetPosition(glm::vec3(0.0f, 0.0f, 25.0f));
 
     float exposure = 1.0f;
-    float apertureRadius = 2.0f;
+    float apertureRadius = 0.2f;
     float focusDistance = glm::max(glm::distance(camera.GetPosition(), glm::vec3(0.0f)), 10.0f);
 
     glViewport(0, 0, width, height);
@@ -300,6 +300,184 @@ int main() {
         }
     }
 
+    index = 0;
+
+    // Box consisting of 6 thin AABB slabs around the demo scene.
+    {
+        float epsilon = 0.01f;
+        float boxHeight = 40.0f;
+        float boxWidth = 40.0f;
+        float boxDepth = 56.0f;
+
+        // Right wall (green).
+        {
+            OpenGL::AABB& wall = aabbs[index++];
+
+            wall.position = glm::vec4(boxWidth / 2.0f, 0.0f, 0.0f, 1.0f);
+            wall.dimensions = glm::vec4(epsilon, boxHeight / 2.0f, boxDepth / 2.0f, 0.0f);
+
+            OpenGL::Material& material = wall.material;
+
+            material.albedo = glm::vec3(0.37f, 0.67f, 0.37f);
+            material.ior = 1.0f;
+
+            material.emissive = glm::vec3(0.0f);
+
+            material.refractionProbability = 0.0f;
+            material.absorbance = glm::vec3(0.0f);
+            material.refractionRoughness = 0.0f;
+
+            material.reflectionProbability = 1.0f;
+            material.reflectionRoughness = 0.6f;
+
+            ++numActiveAABBs;
+        }
+
+        // Left wall (transparent).
+        {
+            OpenGL::AABB& wall = aabbs[index++];
+
+            wall.position = glm::vec4(-boxWidth / 2.0f, 0.0f, 0.0f, 1.0f);
+            wall.dimensions = glm::vec4(epsilon, boxHeight / 2.0f, boxDepth / 2.0f, 0.0f);
+
+            OpenGL::Material& material = wall.material;
+
+            material.albedo = glm::vec3(1.0f);
+            material.ior = 1.52f; // Glass.
+
+            material.emissive = glm::vec3(0.0f);
+
+            material.refractionProbability = 1.0f;
+            material.absorbance = glm::vec3(0.1f);
+            material.refractionRoughness = 0.0f;
+
+            material.reflectionProbability = 0.0f;
+            material.reflectionRoughness = 0.0f;
+
+            ++numActiveAABBs;
+        }
+
+        // Back wall (blue).
+        {
+            OpenGL::AABB& wall = aabbs[index++];
+
+            wall.position = glm::vec4(0.0f, 0.0f, boxDepth / 2.0f, 1.0f);
+            wall.dimensions = glm::vec4(boxWidth / 2.0f, boxHeight / 2.0f, epsilon, 0.0f);
+
+            OpenGL::Material& material = wall.material;
+
+            material.albedo = glm::vec3(0.07f, 0.25f, 0.45f);
+            material.ior = 1.0f;
+
+            material.emissive = glm::vec3(0.0f);
+
+            material.refractionProbability = 0.0f;
+            material.absorbance = glm::vec3(0.0f);
+            material.refractionRoughness = 0.0f;
+
+            material.reflectionProbability = 1.0f;
+            material.reflectionRoughness = 0.6f;
+
+            ++numActiveAABBs;
+        }
+
+        // Front wall (reflective).
+        {
+            OpenGL::AABB& wall = aabbs[index++];
+
+            wall.position = glm::vec4(0.0f, 0.0f, -boxDepth / 2.0f, 1.0f);
+            wall.dimensions = glm::vec4(boxWidth / 2.0f, boxHeight / 2.0f, epsilon, 0.0f);
+
+            OpenGL::Material& material = wall.material;
+
+            material.albedo = glm::vec3(0.9453125f, 0.75390625f, 0.3046875f);
+            material.ior = 1.0f;
+
+            material.emissive = glm::vec3(0.0f);
+
+            material.refractionProbability = 0.0f;
+            material.absorbance = glm::vec3(0.0f);
+            material.refractionRoughness = 0.0f;
+
+            material.reflectionProbability = 1.0f;
+            material.reflectionRoughness = 0.25f;
+
+            ++numActiveAABBs;
+        }
+
+        // Floor (red).
+        {
+            OpenGL::AABB& wall = aabbs[index++];
+
+            wall.position = glm::vec4(0.0f, -boxHeight / 2.0f, 0.0f, 1.0f);
+            wall.dimensions = glm::vec4(boxWidth / 2.0f, epsilon, boxDepth / 2.0f, 0.0f);
+
+            OpenGL::Material& material = wall.material;
+
+            material.albedo = glm::vec3(0.2f, 0.04f, 0.04f);
+            material.ior = 1.0f;
+
+            material.emissive = glm::vec3(0.0f);
+
+            material.refractionProbability = 0.0f;
+            material.absorbance = glm::vec3(0.0f);
+            material.refractionRoughness = 0.0f;
+
+            material.reflectionProbability = 1.0f;
+            material.reflectionRoughness = 0.6f;
+
+            ++numActiveAABBs;
+        }
+
+        // Ceiling (transparent).
+        {
+            OpenGL::AABB& wall = aabbs[index++];
+
+            wall.position = glm::vec4(0.0f, boxHeight / 2.0f, 0.0f, 1.0f);
+            wall.dimensions = glm::vec4(boxWidth / 2.0f, epsilon, boxDepth / 2.0f, 0.0f);
+
+            OpenGL::Material& material = wall.material;
+
+            material.albedo = glm::vec3(1.0f);
+            material.ior = 1.52f; // Glass.
+
+            material.emissive = glm::vec3(0.0f);
+
+            material.refractionProbability = 1.0f;
+            material.absorbance = glm::vec3(0.1f);
+            material.refractionRoughness = 0.0f;
+
+            material.reflectionProbability = 0.0f;
+            material.reflectionRoughness = 0.0f;
+
+            ++numActiveAABBs;
+        }
+
+        // Light.
+        {
+            OpenGL::AABB& light = aabbs[index++];
+
+            light.position = glm::vec4(0.0f, boxHeight / 2.0f - 2.0f, 0.0f, 1.0f);
+            light.dimensions = glm::vec4(boxWidth / 6.0f, epsilon, boxDepth / 6.0f, 0.0f);
+
+            OpenGL::Material& material = light.material;
+
+            material.albedo = glm::vec3(1.0f);
+            material.ior = 1.0f;
+
+            material.emissive = glm::vec3(15.0f);
+
+            material.refractionProbability = 0.0f;
+            material.absorbance = glm::vec3(0.0f);
+            material.refractionRoughness = 0.0f;
+
+            material.reflectionProbability = 1.0f;
+            material.reflectionRoughness = 0.0f;
+
+            ++numActiveAABBs;
+        }
+    }
+
     GLuint ssbo;
     glGenBuffers(1, &ssbo);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
@@ -397,7 +575,7 @@ int main() {
                                                                "src/samples/path-tracing/assets/shaders/post_processing.frag" } };
 
     int frameCounter = 0;
-    int samplesPerPixel = 4;
+    int samplesPerPixel = 1;
     int numRayBounces = 16;
 
     glBindVertexArray(vao);

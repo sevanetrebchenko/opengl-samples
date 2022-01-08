@@ -16,8 +16,8 @@ namespace OpenGL {
     };
 
     struct alignas(16) AABB {
-        glm::vec4 minimum;
-        glm::vec4 maximum;
+        glm::vec4 position;
+        glm::vec4 dimensions;
 
         Material material;
     };

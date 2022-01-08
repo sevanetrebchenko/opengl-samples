@@ -3,7 +3,7 @@
 
 #define FLT_MAX 3.402823466e+38
 #define FLT_MIN 1.175494351e-38
-#define EPSILON 0.001
+#define EPSILON 0.01
 #define PI 3.14159265359
 
 
@@ -33,8 +33,8 @@ struct Sphere {
 };
 
 struct AABB {
-    vec3 minimum;
-    vec3 maximum;
+    vec3 position;
+    vec3 dimensions;
 
     Material material;
 };
@@ -195,8 +195,11 @@ bool Intersects(Ray ray, AABB aabb, float tMin, float tMax, inout HitRecord hitR
     // https://medium.com/@bromanz/another-view-on-the-classic-ray-aabb-intersection-algorithm-for-bvh-traversal-41125138b525
     vec3 inverseRayDirection = vec3(1.0) / ray.direction;
 
-    vec3 t0s = (aabb.minimum - ray.origin) * inverseRayDirection;
-    vec3 t1s = (aabb.maximum - ray.origin) * inverseRayDirection;
+    vec3 minimum = aabb.position - aabb.dimensions;
+    vec3 maximum = aabb.position + aabb.dimensions;
+
+    vec3 t0s = (minimum - ray.origin) * inverseRayDirection;
+    vec3 t1s = (maximum - ray.origin) * inverseRayDirection;
 
     vec3 tMinimum = min(t0s, t1s);
     vec3 tMaximum = max(t0s, t1s);
@@ -214,15 +217,14 @@ bool Intersects(Ray ray, AABB aabb, float tMin, float tMax, inout HitRecord hitR
     hitRecord.point = ray.origin + ray.direction * tMin;
 
     // https://gist.github.com/Shtille/1f98c649abeeb7a18c5a56696546d3cf
-    vec3 center = (aabb.minimum + aabb.maximum) * 0.5;
-    vec3 dimensions = abs(aabb.maximum - aabb.minimum) * 0.5;
+    vec3 center = (minimum + maximum) * 0.5;
 
     vec3 pc = hitRecord.point - center;
 
     vec3 normal = vec3(0.0);
-    normal += vec3(sign(pc.x), 0.0, 0.0) * step(abs(abs(pc.x) - dimensions.x), EPSILON);
-    normal += vec3(0.0, sign(pc.y), 0.0) * step(abs(abs(pc.y) - dimensions.y), EPSILON);
-    normal += vec3(0.0, 0.0, sign(pc.z)) * step(abs(abs(pc.z) - dimensions.z), EPSILON);
+    normal += vec3(sign(pc.x), 0.0, 0.0) * step(abs(abs(pc.x) - aabb.dimensions.x), EPSILON);
+    normal += vec3(0.0, sign(pc.y), 0.0) * step(abs(abs(pc.y) - aabb.dimensions.y), EPSILON);
+    normal += vec3(0.0, 0.0, sign(pc.z)) * step(abs(abs(pc.z) - aabb.dimensions.z), EPSILON);
 
     // Ensure normal always points against the incident ray.
     normal = normalize(normal);
