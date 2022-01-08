@@ -4,20 +4,20 @@
 namespace OpenGL {
 
     struct alignas(16) Material {
-        glm::vec3 albedo = glm::vec3(1.0f);
-        float ior = 1.02f;
+        glm::vec3 albedo;
+        float ior;
 
         // Emissive material properties.
-        glm::vec3 emissive = glm::vec3(0.0f);
+        glm::vec3 emissive;
 
         // Dielectric material properties.
-        float refractionProbability = 0.1f;
-        glm::vec3 absorbance = glm::vec3(0.0f, 0.0f, 0.0f);
-        float refractivity = 0.2f;
+        float refractionProbability;
+        glm::vec3 absorbance;
+        float refractionRoughness;
 
         // Metallic material properties.
-        float reflectionProbability = 0.9f;
-        float reflectivity = 0.2f;
+        float reflectionProbability;
+        float reflectionRoughness;
     };
 
 }

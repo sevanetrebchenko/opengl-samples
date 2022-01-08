@@ -79,11 +79,11 @@ int main() {
 
     // Initialize camera.
     OpenGL::Camera camera { width, height };
-    camera.SetPosition(glm::vec3(0.0f, 0.0f, 10.0f));
+    camera.SetPosition(glm::vec3(0.0f, 0.0f, 0.0f));
 
     float exposure = 1.0f;
     float apertureRadius = 2.0f;
-    float focusDistance = glm::distance(camera.GetPosition(), glm::vec3(0.0f));
+    float focusDistance = glm::max(glm::distance(camera.GetPosition(), glm::vec3(0.0f)), 10.0f);
 
     glViewport(0, 0, width, height);
 
@@ -187,12 +187,63 @@ int main() {
 
     // Initialize scene objects.
     const int numSpheres = 256;
-    const int numAABBs = 256;
-
     std::vector<OpenGL::Sphere> spheres(numSpheres);
+    int numActiveSpheres = 0;
+
+    const int numAABBs = 256;
     std::vector<OpenGL::AABB> aabbs(numAABBs);
+    int numActiveAABBs = 0;
 
+    // 6x6 grid of spheres to showcase varying levels of both reflective materials and reflection roughness properties.
+    {
+        int side = 6;
+        float radius = 2.0f;
+        float gap = 1.0f;
 
+        float length = (radius * 2.0f) * static_cast<float>(side) + gap * static_cast<float>(side);
+        float offset = length / 2.0f;
+        float delta = length / static_cast<float>(side - 1);
+
+        for (int y = 0; y < side; ++y) {
+            for (int x = 0; x < side; ++x) {
+                OpenGL::Sphere& sphere = spheres[x + y * side];
+                sphere.radius = radius;
+                sphere.position = glm::vec3(15.0f, static_cast<float>(y) * delta - offset, static_cast<float>(x) * delta - offset);
+
+                // Configure material properties.
+                OpenGL::Material& material = sphere.material;
+
+                material.albedo = glm::vec3(1.0f);
+                material.ior = 1.0f;
+
+                material.emissive = glm::vec3(0.0f);
+
+                material.refractionProbability = 0.0f;
+                material.absorbance = glm::vec3(0.0f);
+                material.refractionRoughness = 0.1f;
+
+                float prob = static_cast<float>(side - 1 - x) / (static_cast<float>(side - 1));
+                float roug = static_cast<float>(y) / (static_cast<float>(side - 1));
+
+                material.reflectionProbability = static_cast<float>(side - 1 - x) / (static_cast<float>(side - 1));
+                material.reflectionRoughness = static_cast<float>(y) / (static_cast<float>(side - 1));
+
+                ++numActiveSpheres;
+            }
+
+            std::cout << std::endl;
+        }
+    }
+
+    // 1x6 grid of spheres to showcase refractive materials with varying levels of absorbance (Beer's Law).
+    {
+
+    }
+
+    // 1x6 grid of spheres to showcase refractive materials with varying levels of refraction roughness.
+    {
+
+    }
 
     GLuint ssbo;
     glGenBuffers(1, &ssbo);
@@ -202,31 +253,27 @@ int main() {
     // Number of active spheres (int, vec4 with padding), array of 256 spheres.
     glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) + numSpheres * sizeof(OpenGL::Sphere) + sizeof(glm::vec4) + numAABBs * sizeof(OpenGL::AABB), nullptr, GL_STATIC_DRAW);
 
-    {
-        int offset = 0;
+    std::size_t offset = 0;
 
-        // Set sphere object data.
-        int numActiveSpheres = 3;
-        glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveSpheres);
-        offset += sizeof(glm::vec4);
+    // Set sphere object data.
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveSpheres);
+    offset += sizeof(glm::vec4);
 
-        for (int i = 0; i < numActiveSpheres; ++i) {
-            glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::Sphere), &spheres[i]);
-            offset += sizeof(OpenGL::Sphere);
-        }
-
-        offset += (numSpheres - numActiveSpheres) * sizeof(OpenGL::Sphere);
-
-        // Set AABB object data.
-        int numActiveAABBs = 0;
-        glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveAABBs);
-        offset += sizeof(glm::vec4);
-
-        for (int i = 0; i < numActiveAABBs; ++i) {
-            glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::AABB), &aabbs[i]);
-            offset += sizeof(OpenGL::AABB);
-        }
+    for (int i = 0; i < numActiveSpheres; ++i) {
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::Sphere), &spheres[i]);
+        offset += sizeof(OpenGL::Sphere);
     }
+    offset += (numSpheres - numActiveSpheres) * sizeof(OpenGL::Sphere);
+
+    // Set AABB object data.
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveAABBs);
+    offset += sizeof(glm::vec4);
+
+    for (int i = 0; i < numActiveAABBs; ++i) {
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::AABB), &aabbs[i]);
+        offset += sizeof(OpenGL::AABB);
+    }
+    offset += (numAABBs - numActiveAABBs) * sizeof(OpenGL::AABB);
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
@@ -469,7 +516,7 @@ int main() {
             glBindBuffer(GL_UNIFORM_BUFFER, 0);
         }
 
-        bool imguiInput = false;
+        bool receivedImGuiInput = false;
 
         // Sample overview and statistics.
         if (ImGui::Begin("Sample Overview")) {
@@ -491,19 +538,19 @@ int main() {
             if (ImGui::SliderInt("##spp", &tempSamplesPerPixel, 1, 64)) {
                 if (tempSamplesPerPixel != samplesPerPixel) {
                     samplesPerPixel = tempSamplesPerPixel;
-                    imguiInput = true;
+                    receivedImGuiInput = true;
                 }
             }
 
             ImGui::Text("Number of ray bounces:");
             int tempNumRayBounces = numRayBounces;
-            if (ImGui::SliderInt("##numRayBounces", &tempNumRayBounces, 1, 64)) {
+            if (ImGui::SliderInt("##numRayBounces", &tempNumRayBounces, 2, 64)) {
                 // Manual input can go outside the valid range.
-                tempNumRayBounces = glm::clamp(tempNumRayBounces, 1, 64);
+                tempNumRayBounces = glm::clamp(tempNumRayBounces, 2, 64);
 
                 if (tempNumRayBounces != numRayBounces) {
                     numRayBounces = tempNumRayBounces;
-                    imguiInput = true;
+                    receivedImGuiInput = true;
                 }
             }
 
@@ -520,7 +567,7 @@ int main() {
             if (ImGui::SliderFloat("##exposure", &tempExposure, 0.1f, 5.0f)) {
                 if (glm::abs(tempExposure - exposure) > std::numeric_limits<float>::epsilon()) {
                     exposure = tempExposure;
-                    imguiInput = true;
+                    receivedImGuiInput = true;
                 }
             }
 
@@ -529,11 +576,8 @@ int main() {
             if (ImGui::SliderFloat("##apertureDiameter", &apertureDiameter, 0.0f, 10.0f)) {
                 if (glm::abs(apertureDiameter - (apertureRadius * 2.0f)) > std::numeric_limits<float>::epsilon()) {
                     apertureRadius = apertureDiameter / 2.0f;
-                    imguiInput = true;
+                    receivedImGuiInput = true;
                 }
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("");
             }
 
             ImGui::Text("Focus Distance:");
@@ -541,7 +585,7 @@ int main() {
             if (ImGui::SliderFloat("##focusDistance", &tempFocusDistance, 2.0f, 100.0f)) {
                 if (glm::abs(tempFocusDistance - focusDistance) > std::numeric_limits<float>::epsilon()) {
                     focusDistance = tempFocusDistance;
-                    imguiInput = true;
+                    receivedImGuiInput = true;
                 }
             }
 
@@ -564,7 +608,7 @@ int main() {
         GLuint currentFrameImage = currentFrameIndex == 0 ? frame1 : frame2;
 
         // Reset the previous frame texture.
-        if (cameraPositionChanged || cameraOrientationChanged || imguiInput) {
+        if (cameraPositionChanged || cameraOrientationChanged || receivedImGuiInput) {
             glBindTexture(GL_TEXTURE_2D, previousFrameImage);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
             glBindTexture(GL_TEXTURE_2D, 0);
@@ -621,6 +665,7 @@ int main() {
         glfwSwapBuffers(window);
 
         ++frameCounter;
+        frameCounter %= INT_MAX;
 
         current = (float)glfwGetTime();
         dt = current - previous;
