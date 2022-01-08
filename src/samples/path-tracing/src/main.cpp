@@ -194,6 +194,8 @@ int main() {
     std::vector<OpenGL::AABB> aabbs(numAABBs);
     int numActiveAABBs = 0;
 
+    int index = 0;
+
     // 6x6 grid of spheres to showcase varying levels of both reflective materials and reflection roughness properties.
     {
         int side = 6;
@@ -206,7 +208,7 @@ int main() {
 
         for (int y = 0; y < side; ++y) {
             for (int x = 0; x < side; ++x) {
-                OpenGL::Sphere& sphere = spheres[x + y * side];
+                OpenGL::Sphere& sphere = spheres[index++];
                 sphere.radius = radius;
                 sphere.position = glm::vec3(15.0f, static_cast<float>(y) * delta - offset, static_cast<float>(x) * delta - offset);
 
@@ -220,29 +222,82 @@ int main() {
 
                 material.refractionProbability = 0.0f;
                 material.absorbance = glm::vec3(0.0f);
-                material.refractionRoughness = 0.1f;
-
-                float prob = static_cast<float>(side - 1 - x) / (static_cast<float>(side - 1));
-                float roug = static_cast<float>(y) / (static_cast<float>(side - 1));
+                material.refractionRoughness = 0.0f;
 
                 material.reflectionProbability = static_cast<float>(side - 1 - x) / (static_cast<float>(side - 1));
                 material.reflectionRoughness = static_cast<float>(y) / (static_cast<float>(side - 1));
 
                 ++numActiveSpheres;
             }
-
-            std::cout << std::endl;
         }
     }
 
     // 1x6 grid of spheres to showcase refractive materials with varying levels of absorbance (Beer's Law).
     {
+        int side = 6;
+        float radius = 2.0f;
+        float gap = 1.0f;
 
+        float length = (radius * 2.0f) * static_cast<float>(side) + gap * static_cast<float>(side);
+        float offset = length / 2.0f;
+        float delta = length / static_cast<float>(side - 1);
+
+        for (int i = 0; i < side; ++i) {
+            OpenGL::Sphere& sphere = spheres[index++];
+            sphere.radius = radius;
+            sphere.position = glm::vec3(-15.0f, length / 4.0f, static_cast<float>(i) * delta - offset);
+
+            // Configure material properties.
+            OpenGL::Material& material = sphere.material;
+
+            material.albedo = glm::vec3(0.90f, 0.25f, 0.25f);
+            material.ior = 1.05f;
+
+            material.emissive = glm::vec3(0.0f);
+
+            material.refractionProbability = 0.98f;
+            material.absorbance = glm::vec3(1.0f, 2.0f, 3.0f) * (static_cast<float>(i) / static_cast<float>(side));
+            material.refractionRoughness = 0.0f;
+
+            material.reflectionProbability = 0.02f;
+            material.reflectionRoughness = 0.0f;
+
+            ++numActiveSpheres;
+        }
     }
 
     // 1x6 grid of spheres to showcase refractive materials with varying levels of refraction roughness.
     {
+        int side = 6;
+        float radius = 2.0f;
+        float gap = 1.0f;
 
+        float length = (radius * 2.0f) * static_cast<float>(side) + gap * static_cast<float>(side);
+        float offset = length / 2.0f;
+        float delta = length / static_cast<float>(side - 1);
+
+        for (int i = 0; i < side; ++i) {
+            OpenGL::Sphere& sphere = spheres[index++];
+            sphere.radius = radius;
+            sphere.position = glm::vec3(-15.0f, -length / 4.0f, static_cast<float>(i) * delta - offset);
+
+            // Configure material properties.
+            OpenGL::Material& material = sphere.material;
+
+            material.albedo = glm::vec3(1.0f);
+            material.ior = 1.1f;
+
+            material.emissive = glm::vec3(0.0f);
+
+            material.refractionProbability = 0.98f;
+            material.absorbance = glm::vec3(0.0f);
+            material.refractionRoughness = (static_cast<float>(side - 1 - i) / static_cast<float>(side));
+
+            material.reflectionProbability = 0.02f;
+            material.reflectionRoughness = (static_cast<float>(i) / static_cast<float>(side));
+
+            ++numActiveSpheres;
+        }
     }
 
     GLuint ssbo;
@@ -253,27 +308,29 @@ int main() {
     // Number of active spheres (int, vec4 with padding), array of 256 spheres.
     glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) + numSpheres * sizeof(OpenGL::Sphere) + sizeof(glm::vec4) + numAABBs * sizeof(OpenGL::AABB), nullptr, GL_STATIC_DRAW);
 
-    std::size_t offset = 0;
+    {
+        std::size_t offset = 0;
 
-    // Set sphere object data.
-    glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveSpheres);
-    offset += sizeof(glm::vec4);
+        // Set sphere object data.
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveSpheres);
+        offset += sizeof(glm::vec4);
 
-    for (int i = 0; i < numActiveSpheres; ++i) {
-        glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::Sphere), &spheres[i]);
-        offset += sizeof(OpenGL::Sphere);
+        for (int i = 0; i < numActiveSpheres; ++i) {
+            glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::Sphere), &spheres[i]);
+            offset += sizeof(OpenGL::Sphere);
+        }
+        offset += (numSpheres - numActiveSpheres) * sizeof(OpenGL::Sphere);
+
+        // Set AABB object data.
+        glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveAABBs);
+        offset += sizeof(glm::vec4);
+
+        for (int i = 0; i < numActiveAABBs; ++i) {
+            glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::AABB), &aabbs[i]);
+            offset += sizeof(OpenGL::AABB);
+        }
+        offset += (numAABBs - numActiveAABBs) * sizeof(OpenGL::AABB);
     }
-    offset += (numSpheres - numActiveSpheres) * sizeof(OpenGL::Sphere);
-
-    // Set AABB object data.
-    glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(int), &numActiveAABBs);
-    offset += sizeof(glm::vec4);
-
-    for (int i = 0; i < numActiveAABBs; ++i) {
-        glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, sizeof(OpenGL::AABB), &aabbs[i]);
-        offset += sizeof(OpenGL::AABB);
-    }
-    offset += (numAABBs - numActiveAABBs) * sizeof(OpenGL::AABB);
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
@@ -344,10 +401,6 @@ int main() {
     int numRayBounces = 16;
 
     glBindVertexArray(vao);
-
-    // For the best visual clarity, denoising textures need to be reset when anything in the scene configuration changes.
-    // This includes, but is not limited to, properties of the camera and properties of path tracing.
-    bool resetRenderTargets = false;
 
     while ((glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS) && (glfwWindowShouldClose(window) == 0)) {
         glfwPollEvents();
@@ -607,7 +660,7 @@ int main() {
         GLuint previousFrameImage = previousFrameIndex == 0 ? frame1 : frame2;
         GLuint currentFrameImage = currentFrameIndex == 0 ? frame1 : frame2;
 
-        // Reset the previous frame texture.
+        // For the best visual clarity, denoising textures need to be reset when anything in the scene configuration changes.
         if (cameraPositionChanged || cameraOrientationChanged || receivedImGuiInput) {
             glBindTexture(GL_TEXTURE_2D, previousFrameImage);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
@@ -654,7 +707,6 @@ int main() {
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         // Save ImGui .ini settings.
-        ImGuiIO& io = ImGui::GetIO();
         if (io.WantSaveIniSettings) {
             ImGui::SaveIniSettingsToDisk(imGuiIni.c_str());
 
