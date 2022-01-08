@@ -909,6 +909,11 @@ int main() {
     glDeleteBuffers(1, &verticesVBO);
     glDeleteBuffers(1, &ssbo);
     glDeleteBuffers(1, &ubo);
+    glDeleteFramebuffers(1, &fbo);
+    glDeleteRenderbuffers(1, &rbo);
+    glDeleteTextures(1, &frame2);
+    glDeleteTextures(1, &frame1);
+    glDeleteTextures(1, &skybox);
 
     ImGui::SaveIniSettingsToDisk(imGuiIni.c_str());
     ImGui_ImplOpenGL3_Shutdown();
