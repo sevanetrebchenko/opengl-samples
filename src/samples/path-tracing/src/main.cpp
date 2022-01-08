@@ -314,7 +314,7 @@ int main() {
             OpenGL::AABB& wall = aabbs[index++];
 
             wall.position = glm::vec4(boxWidth / 2.0f, 0.0f, 0.0f, 1.0f);
-            wall.dimensions = glm::vec4(epsilon, boxHeight / 2.0f, boxDepth / 2.0f, 0.0f);
+            wall.dimensions = glm::vec4(epsilon, boxHeight / 2.0f + epsilon, boxDepth / 2.0f + epsilon, 0.0f);
 
             OpenGL::Material& material = wall.material;
 
@@ -338,7 +338,7 @@ int main() {
             OpenGL::AABB& wall = aabbs[index++];
 
             wall.position = glm::vec4(-boxWidth / 2.0f, 0.0f, 0.0f, 1.0f);
-            wall.dimensions = glm::vec4(epsilon, boxHeight / 2.0f, boxDepth / 2.0f, 0.0f);
+            wall.dimensions = glm::vec4(epsilon, boxHeight / 2.0f + epsilon, boxDepth / 2.0f + epsilon, 0.0f);
 
             OpenGL::Material& material = wall.material;
 
@@ -362,7 +362,7 @@ int main() {
             OpenGL::AABB& wall = aabbs[index++];
 
             wall.position = glm::vec4(0.0f, 0.0f, boxDepth / 2.0f, 1.0f);
-            wall.dimensions = glm::vec4(boxWidth / 2.0f, boxHeight / 2.0f, epsilon, 0.0f);
+            wall.dimensions = glm::vec4(boxWidth / 2.0f + epsilon, boxHeight / 2.0f + epsilon, epsilon, 0.0f);
 
             OpenGL::Material& material = wall.material;
 
@@ -386,7 +386,7 @@ int main() {
             OpenGL::AABB& wall = aabbs[index++];
 
             wall.position = glm::vec4(0.0f, 0.0f, -boxDepth / 2.0f, 1.0f);
-            wall.dimensions = glm::vec4(boxWidth / 2.0f, boxHeight / 2.0f, epsilon, 0.0f);
+            wall.dimensions = glm::vec4(boxWidth / 2.0f + epsilon, boxHeight / 2.0f + epsilon, epsilon, 0.0f);
 
             OpenGL::Material& material = wall.material;
 
@@ -410,7 +410,7 @@ int main() {
             OpenGL::AABB& wall = aabbs[index++];
 
             wall.position = glm::vec4(0.0f, -boxHeight / 2.0f, 0.0f, 1.0f);
-            wall.dimensions = glm::vec4(boxWidth / 2.0f, epsilon, boxDepth / 2.0f, 0.0f);
+            wall.dimensions = glm::vec4(boxWidth / 2.0f + epsilon, epsilon, boxDepth / 2.0f + epsilon, 0.0f);
 
             OpenGL::Material& material = wall.material;
 
@@ -434,7 +434,7 @@ int main() {
             OpenGL::AABB& wall = aabbs[index++];
 
             wall.position = glm::vec4(0.0f, boxHeight / 2.0f, 0.0f, 1.0f);
-            wall.dimensions = glm::vec4(boxWidth / 2.0f, epsilon, boxDepth / 2.0f, 0.0f);
+            wall.dimensions = glm::vec4(boxWidth / 2.0f + epsilon, epsilon, boxDepth / 2.0f + epsilon, 0.0f);
 
             OpenGL::Material& material = wall.material;
 
