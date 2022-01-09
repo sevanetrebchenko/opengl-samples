@@ -84,6 +84,7 @@ int main() {
     float exposure = 1.0f;
     float apertureRadius = 0.2f;
     float focusDistance = glm::max(glm::distance(camera.GetPosition(), glm::vec3(0.0f)), 10.0f);
+    bool focusOnClick = true;
 
     glViewport(0, 0, width, height);
 
@@ -153,7 +154,7 @@ int main() {
     GLuint postProcessingFrame;
     glGenTextures(1, &postProcessingFrame);
     glBindTexture(GL_TEXTURE_2D, postProcessingFrame);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, blankTexture.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -597,6 +598,8 @@ int main() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
+        bool refreshRenderTargets = false;
+
         // Handle resizing the window.
         int tempWidth;
         int tempHeight;
@@ -634,7 +637,7 @@ int main() {
             glBindFramebuffer(GL_FRAMEBUFFER, fbo);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame1, 0);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame2, 0);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, postProcessingFrame, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, postProcessingFrame, 0);
             glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
 
             if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
@@ -658,43 +661,39 @@ int main() {
         const glm::vec3& cameraForwardVector = camera.GetForwardVector();
         const glm::vec3& cameraUpVector = camera.GetUpVector();
 
-        bool cameraPositionChanged = false;
-
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
             camera.SetPosition(cameraPosition + cameraSpeed * cameraForwardVector * dt);
-            cameraPositionChanged = true;
+            refreshRenderTargets = true;
         }
 
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
             camera.SetPosition(cameraPosition - cameraSpeed * cameraForwardVector * dt);
-            cameraPositionChanged = true;
+            refreshRenderTargets = true;
         }
 
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
             camera.SetPosition(cameraPosition - glm::normalize(glm::cross(cameraForwardVector, cameraUpVector)) * cameraSpeed * dt);
-            cameraPositionChanged = true;
+            refreshRenderTargets = true;
         }
 
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
             camera.SetPosition(cameraPosition + glm::normalize(glm::cross(cameraForwardVector, cameraUpVector)) * cameraSpeed * dt);
-            cameraPositionChanged = true;
+            refreshRenderTargets = true;
         }
 
         if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
             camera.SetPosition(cameraPosition + cameraSpeed * cameraUpVector * dt);
-            cameraPositionChanged = true;
+            refreshRenderTargets = true;
         }
 
         if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
             camera.SetPosition(cameraPosition - cameraSpeed * cameraUpVector * dt);
-            cameraPositionChanged = true;
+            refreshRenderTargets = true;
         }
 
         // Mouse input.
         static glm::vec2 previousCursorPosition;
         static bool initialInput = true;
-
-        bool cameraOrientationChanged = false;
 
         if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
             glm::dvec2 cursorPosition;
@@ -723,7 +722,7 @@ int main() {
             pitch += dy;
 
             if (glm::abs(dx) > std::numeric_limits<float>::epsilon() || glm::abs(dy) > std::numeric_limits<float>::epsilon()) {
-                cameraOrientationChanged = true;
+                refreshRenderTargets = true;
             }
 
             // Prevent camera forward vector to be parallel to camera up vector (0, 1, 0).
@@ -746,7 +745,7 @@ int main() {
 
         static bool sphereSelected = false;
         static bool aabbSelected = false;
-        static int index = -1;
+        static int currentSelectedObjectIndex = -1;
 
         // Mouse picking.
         static int previousState = GLFW_RELEASE;
@@ -754,7 +753,9 @@ int main() {
         if ((newState == GLFW_RELEASE && previousState == GLFW_PRESS) && !io.WantCaptureMouse) {
             sphereSelected = false;
             aabbSelected = false;
-            index = -1;
+
+            int previouslySelectedObjectIndex = currentSelectedObjectIndex;
+            bool selectedObject = false;
 
             // Get ray that originates from the camera position in the rayDirection of the click.
             glm::dvec2 clickPosition;
@@ -815,7 +816,9 @@ int main() {
 
                 sphereSelected = true;
                 aabbSelected = false;
-                index = i;
+
+                currentSelectedObjectIndex = i;
+                selectedObject = true;
             }
 
             // Intersect with all active AABBs.
@@ -847,60 +850,109 @@ int main() {
 //
 //                aabbSelected = true;
 //                sphereSelected = false;
-//                index = i;
+//                current = i;
 //            }
+
+            if (selectedObject) {
+                if (previouslySelectedObjectIndex != currentSelectedObjectIndex) {
+                    std::cout << "selected new" << std::endl;
+                    refreshRenderTargets = true;
+                }
+            }
+            else {
+                currentSelectedObjectIndex = -1;
+            }
+
+            previouslySelectedObjectIndex = currentSelectedObjectIndex;
         }
 
         previousState = newState;
 
-        bool receivedImGuiInput = false;
-
         if (ImGui::Begin("Scene Objects")) {
             if (sphereSelected) {
-                OpenGL::Sphere& object = spheres[index];
-
+                OpenGL::Sphere& object = spheres[currentSelectedObjectIndex];
                 glm::vec3 position = object.position;
-                float radius = object.radius;
-
-                float distance = glm::distance(camera.GetPosition(), position);
 
                 ImGui::PushStyleColor(ImGuiCol_Text, 0xff999999);
 
+                // Update camera focus distance to focus on the selected object.
+                float distance = glm::distance(camera.GetPosition(), position);
                 ImGui::Text("Distance to sphere: %f", distance);
+                if (focusOnClick) {
+                    focusDistance = distance;
+                }
+
                 ImGui::Separator();
 
-                // Object properties.
-                bool objectPropertiesChanged = false;
+                bool updateGPUData = false;
 
                 ImGui::Text("Position:");
-                if (ImGui::DragFloat3("##position", &position.x, -20.0f, 20.0f)) {
-                    object.position = position;
-                    objectPropertiesChanged = true;
+                if (ImGui::DragFloat3("##position", &position.x, 0.1f, -30.0f, 30.0f)) {
+                    // Manual input can go outside the valid range.
+                    position = glm::clamp(position, glm::vec3(-30.0f), glm::vec3(30.0f));
 
-                    receivedImGuiInput = true;
+                    // At least one needs to be different for GPU data to get updated.
+                    glm::vec3 delta = glm::abs(position - object.position);
+                    if (delta.x > std::numeric_limits<float>::epsilon() || delta.y > std::numeric_limits<float>::epsilon() || delta.z > std::numeric_limits<float>::epsilon()) {
+                        object.position = position;
+                        updateGPUData = true;
+                    }
                 }
 
                 ImGui::Text("Radius:");
-                if (ImGui::SliderFloat("##radius", &radius, 0.001f, 20.0f)) {
-                    object.radius = radius;
-                    objectPropertiesChanged = true;
+                float tempRadius = object.radius;
+                if (ImGui::SliderFloat("##radius", &tempRadius, 0.001f, 20.0f)) {
+                    // Manual input can go outside the valid range.
+                    tempRadius = glm::clamp(tempRadius, 0.001f, 20.0f);
 
-                    receivedImGuiInput = true;
+                    if (glm::abs(tempRadius - object.radius) > std::numeric_limits<float>::epsilon()) {
+                        object.radius = tempRadius;
+                        updateGPUData = true;
+                    }
                 }
 
                 ImGui::Separator();
 
-                // Update data in SSBO.
-                if (objectPropertiesChanged) {
+                // Material properties.
+                OpenGL::Material& material = object.material;
+
+                ImGui::Text("Albedo:");
+                glm::vec3 albedo = material.albedo;
+                if (ImGui::ColorEdit3("##albedo", &albedo.x)) {
+                    // Manual input can go outside the valid range.
+                    albedo = glm::clamp(albedo, glm::vec3(0.0f), glm::vec3(1.0f));
+
+                    // At least one needs to be different for GPU data to get updated.
+                    glm::vec3 delta = glm::abs(albedo - material.albedo);
+                    if (delta.x > std::numeric_limits<float>::epsilon() || delta.y > std::numeric_limits<float>::epsilon() || delta.z > std::numeric_limits<float>::epsilon()) {
+                        material.albedo = albedo; // ImGui automatically converts color back to [0.0, 1.0] range.
+                        updateGPUData = true;
+                    }
+                }
+
+                material.ior = 1.52f; // Glass.
+
+                material.emissive = glm::vec3(0.0f);
+
+                material.refractionProbability = 1.0f;
+                material.absorbance = glm::vec3(0.1f);
+                material.refractionRoughness = 0.0f;
+
+                material.reflectionProbability = 0.0f;
+                material.reflectionRoughness = 0.0f;
+
+                if (updateGPUData) {
                     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
-                    glBufferSubData(GL_SHADER_STORAGE_BUFFER, index * sizeof(OpenGL::Sphere), sizeof(OpenGL::Sphere), &object);
+                    glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) + (currentSelectedObjectIndex) * sizeof(OpenGL::Sphere), sizeof(OpenGL::Sphere), &object);
                     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+                    refreshRenderTargets = true;
                 }
 
                 ImGui::PopStyleColor();
             }
             else if (aabbSelected) {
-                OpenGL::AABB& object = aabbs[index];
+                OpenGL::AABB& object = aabbs[currentSelectedObjectIndex];
             }
             else {
                 // No object currently selected.
@@ -946,7 +998,18 @@ int main() {
                     std::filesystem::create_directory(outputDirectory);
                 }
 
-                // Save most recently rendered-to FBO render target.
+                // Save final output image.
+                int channels = 4;
+                std::vector<unsigned char> pixels(width * height * channels);
+
+                // Read in OpenGL texture data.
+                glBindTexture(GL_TEXTURE_2D, postProcessingFrame);
+                glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+                glBindTexture(GL_TEXTURE_2D, 0);
+
+                stbi_flip_vertically_on_write(true);
+                stbi_write_png("src/samples/path-tracing/data/artifacts/image.png", width, height, channels, pixels.data(), 0);
+                stbi_write_jpg("src/samples/path-tracing/data/artifacts/image.jpg", width, height, channels, pixels.data(), 100);
             }
 
             ImGui::PopStyleColor();
@@ -960,9 +1023,12 @@ int main() {
             ImGui::Text("Samples per pixel:");
             int tempSamplesPerPixel = samplesPerPixel;
             if (ImGui::SliderInt("##spp", &tempSamplesPerPixel, 1, 64)) {
+                // Manual input can go outside the valid range.
+                tempSamplesPerPixel = glm::clamp(tempSamplesPerPixel, 1, 64);
+
                 if (tempSamplesPerPixel != samplesPerPixel) {
                     samplesPerPixel = tempSamplesPerPixel;
-                    receivedImGuiInput = true;
+                    refreshRenderTargets = true;
                 }
             }
 
@@ -974,7 +1040,7 @@ int main() {
 
                 if (tempNumRayBounces != numRayBounces) {
                     numRayBounces = tempNumRayBounces;
-                    receivedImGuiInput = true;
+                    refreshRenderTargets = true;
                 }
             }
 
@@ -989,29 +1055,40 @@ int main() {
             ImGui::Text("Exposure:");
             float tempExposure = exposure;
             if (ImGui::SliderFloat("##exposure", &tempExposure, 0.1f, 5.0f)) {
+                // Manual input can go outside the valid range.
+                tempExposure = glm::clamp(tempExposure, 0.1f, 5.0f);
+
                 if (glm::abs(tempExposure - exposure) > std::numeric_limits<float>::epsilon()) {
                     exposure = tempExposure;
-                    receivedImGuiInput = true;
+                    refreshRenderTargets = true;
                 }
             }
 
             ImGui::Text("Aperture Diameter:");
             float apertureDiameter = apertureRadius * 2.0f;
             if (ImGui::SliderFloat("##apertureDiameter", &apertureDiameter, 0.0f, 10.0f)) {
+                // Manual input can go outside the valid range.
+                apertureDiameter = glm::clamp(apertureDiameter, 0.0f, 10.0f);
+
                 if (glm::abs(apertureDiameter - (apertureRadius * 2.0f)) > std::numeric_limits<float>::epsilon()) {
                     apertureRadius = apertureDiameter / 2.0f;
-                    receivedImGuiInput = true;
+                    refreshRenderTargets = true;
                 }
             }
 
             ImGui::Text("Focus Distance:");
             float tempFocusDistance = focusDistance;
             if (ImGui::SliderFloat("##focusDistance", &tempFocusDistance, 2.0f, 100.0f)) {
+                // Manual input can go outside the valid range.
+                tempFocusDistance = glm::clamp(tempFocusDistance, 2.0f, 100.0f);
+
                 if (glm::abs(tempFocusDistance - focusDistance) > std::numeric_limits<float>::epsilon()) {
                     focusDistance = tempFocusDistance;
-                    receivedImGuiInput = true;
+                    refreshRenderTargets = true;
                 }
             }
+
+            ImGui::Checkbox("Focus Object on Click?", &focusOnClick);
 
             ImGui::PopStyleColor();
         }
@@ -1032,7 +1109,7 @@ int main() {
         GLuint currentFrameImage = currentFrameIndex == 0 ? frame1 : frame2;
 
         // For the best visual clarity, de-noising textures need to be reset when anything in the scene configuration changes.
-        if (cameraPositionChanged || cameraOrientationChanged || receivedImGuiInput) {
+        if (refreshRenderTargets) {
             glBindTexture(GL_TEXTURE_2D, previousFrameImage);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
             glBindTexture(GL_TEXTURE_2D, 0);
@@ -1040,6 +1117,9 @@ int main() {
             frameCounter = 0;
         }
 
+
+
+        // Render to intermediate textures.
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
         // Determine which texture is the previous frame and which texture is the current frame.
@@ -1058,11 +1138,11 @@ int main() {
         // Render to FBO attachment.
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         pathTracingShader.Unbind();
 
-        // Render final output to full screen quad.
+
+
+        // Render to final texture.
         postProcessingShader.Bind();
 
         glActiveTexture(GL_TEXTURE0);
@@ -1071,10 +1151,30 @@ int main() {
 
         postProcessingShader.SetUniform("exposure", exposure);
 
+        drawBuffers[0] = GL_COLOR_ATTACHMENT2; // Color attachment 2 is always the render target for final output.
+        glDrawBuffers(1, drawBuffers.data());
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);
 
         postProcessingShader.Unbind();
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+
+        // Render final output to screen.
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+        glNamedFramebufferReadBuffer(fbo, GL_COLOR_ATTACHMENT2); // Set the read buffer to be the render attachment of the final output.
+
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+        glBlitFramebuffer(0, 0, width, height,
+                          0, 0, width, height,
+                          GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -1105,6 +1205,7 @@ int main() {
     glDeleteBuffers(1, &ubo);
     glDeleteFramebuffers(1, &fbo);
     glDeleteRenderbuffers(1, &rbo);
+    glDeleteTextures(1, &postProcessingFrame);
     glDeleteTextures(1, &frame2);
     glDeleteTextures(1, &frame1);
     glDeleteTextures(1, &skybox);
