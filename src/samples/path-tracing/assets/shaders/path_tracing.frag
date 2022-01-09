@@ -14,10 +14,11 @@ struct Material {
 
     // Emissive material properties.
     vec3 emissive;
+    float emissiveStrength;
 
     // Dielectric material properties.
-    float refractionProbability;
     vec3 absorbance;
+    float refractionProbability;
     float refractionRoughness;
 
     // Metallic material properties.
@@ -398,7 +399,7 @@ vec3 Radiance(uint rngState, Ray ray) {
             ray.direction = normalize(ray.direction);
 
             // Emissive lighting.
-            radiance += material.emissive * throughput;
+            radiance += (material.emissive * material.emissiveStrength) * throughput;
 
             // Refraction alone has no final color contribution, need to trace again until the new ray direction hits another object.
             // Apply light absorbtion over distance through refractive object.

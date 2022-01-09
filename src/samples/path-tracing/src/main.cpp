@@ -475,7 +475,8 @@ int main() {
             material.albedo = glm::vec3(1.0f);
             material.ior = 1.0f;
 
-            material.emissive = glm::vec3(15.0f);
+            material.emissive = glm::vec3(1.0f);
+            material.emissiveStrength = 15.0f;
 
             material.refractionProbability = 0.0f;
             material.absorbance = glm::vec3(0.0f);
@@ -822,40 +823,41 @@ int main() {
             }
 
             // Intersect with all active AABBs.
-//            for (int i = 0; i < numActiveAABBs; ++i) {
-//                OpenGL::AABB& temp = aabbs[i];
-//
-//                glm::vec3 minimum = temp.position - temp.dimensions;
-//                glm::vec3 maximum = temp.position + temp.dimensions;
-//
-//                // AABB-Ray intersection via the slab method.
-//                // https://gist.github.com/DomNomNom/46bb1ce47f68d255fd5d
-//                glm::vec3 slabMin = (minimum - rayOrigin) / rayDirection;
-//                glm::vec3 slabMax = (maximum - rayOrigin) / rayDirection;
-//                glm::vec3 t1 = min(slabMin, slabMax);
-//                glm::vec3 t2 = max(slabMin, slabMax);
-//
-//                float tNear = glm::max(glm::max(t1.x, t1.y), t1.z);
-//                float tFar = glm::min(glm::min(t2.x, t2.y), t2.z);
-//
-//                // Bounds check.
-//                float t = tNear < 0.0 ? tFar : tNear;
-//                if (t < tMin || t > tMax) {
-//                    // Closer intersection has already been found.
-//                    continue;
-//                }
-//
-//                // Update bounds.
-//                tMax = t;
-//
-//                aabbSelected = true;
-//                sphereSelected = false;
-//                current = i;
-//            }
+            for (int i = 0; i < numActiveAABBs; ++i) {
+                OpenGL::AABB& temp = aabbs[i];
+
+                // https://medium.com/@bromanz/another-view-on-the-classic-ray-aabb-intersection-algorithm-for-bvh-traversal-41125138b525
+                glm::vec3 inverseRayDirection = glm::vec3(1.0f) / rayDirection;
+
+                glm::vec3 minimum = temp.position - temp.dimensions;
+                glm::vec3 maximum = temp.position + temp.dimensions;
+
+                glm::vec3 t0s = (minimum - rayOrigin) * inverseRayDirection;
+                glm::vec3 t1s = (maximum - rayOrigin) * inverseRayDirection;
+
+                glm::vec3 tMinimum = min(t0s, t1s);
+                glm::vec3 tMaximum = max(t0s, t1s);
+
+                tMin = glm::max(tMin, glm::max(tMinimum[0], glm::max(tMinimum[1], tMinimum[2])));
+                tMax = glm::min(tMax, glm::min(tMaximum[0], glm::min(tMaximum[1], tMaximum[2])));
+
+                // tMin >= tMax means no intersection.
+                if (tMin > tMax || glm::abs(tMax - tMin) < std::numeric_limits<float>::epsilon()) {
+                    continue;
+                }
+
+                // Update bounds.
+                tMax = tMax;
+
+                aabbSelected = true;
+                sphereSelected = false;
+
+                currentSelectedObjectIndex = i;
+                selectedObject = true;
+            }
 
             if (selectedObject) {
                 if (previouslySelectedObjectIndex != currentSelectedObjectIndex) {
-                    std::cout << "selected new" << std::endl;
                     refreshRenderTargets = true;
                 }
             }
@@ -871,76 +873,12 @@ int main() {
         if (ImGui::Begin("Scene Objects")) {
             if (sphereSelected) {
                 OpenGL::Sphere& object = spheres[currentSelectedObjectIndex];
-                glm::vec3 position = object.position;
 
-                ImGui::PushStyleColor(ImGuiCol_Text, 0xff999999);
-
-                // Update camera focus distance to focus on the selected object.
-                float distance = glm::distance(camera.GetPosition(), position);
-                ImGui::Text("Distance to sphere: %f", distance);
                 if (focusOnClick) {
-                    focusDistance = distance;
+                    focusDistance = glm::distance(object.position, cameraPosition);
                 }
 
-                ImGui::Separator();
-
-                bool updateGPUData = false;
-
-                ImGui::Text("Position:");
-                if (ImGui::DragFloat3("##position", &position.x, 0.1f, -30.0f, 30.0f)) {
-                    // Manual input can go outside the valid range.
-                    position = glm::clamp(position, glm::vec3(-30.0f), glm::vec3(30.0f));
-
-                    // At least one needs to be different for GPU data to get updated.
-                    glm::vec3 delta = glm::abs(position - object.position);
-                    if (delta.x > std::numeric_limits<float>::epsilon() || delta.y > std::numeric_limits<float>::epsilon() || delta.z > std::numeric_limits<float>::epsilon()) {
-                        object.position = position;
-                        updateGPUData = true;
-                    }
-                }
-
-                ImGui::Text("Radius:");
-                float tempRadius = object.radius;
-                if (ImGui::SliderFloat("##radius", &tempRadius, 0.001f, 20.0f)) {
-                    // Manual input can go outside the valid range.
-                    tempRadius = glm::clamp(tempRadius, 0.001f, 20.0f);
-
-                    if (glm::abs(tempRadius - object.radius) > std::numeric_limits<float>::epsilon()) {
-                        object.radius = tempRadius;
-                        updateGPUData = true;
-                    }
-                }
-
-                ImGui::Separator();
-
-                // Material properties.
-                OpenGL::Material& material = object.material;
-
-                ImGui::Text("Albedo:");
-                glm::vec3 albedo = material.albedo;
-                if (ImGui::ColorEdit3("##albedo", &albedo.x)) {
-                    // Manual input can go outside the valid range.
-                    albedo = glm::clamp(albedo, glm::vec3(0.0f), glm::vec3(1.0f));
-
-                    // At least one needs to be different for GPU data to get updated.
-                    glm::vec3 delta = glm::abs(albedo - material.albedo);
-                    if (delta.x > std::numeric_limits<float>::epsilon() || delta.y > std::numeric_limits<float>::epsilon() || delta.z > std::numeric_limits<float>::epsilon()) {
-                        material.albedo = albedo; // ImGui automatically converts color back to [0.0, 1.0] range.
-                        updateGPUData = true;
-                    }
-                }
-
-                material.ior = 1.52f; // Glass.
-
-                material.emissive = glm::vec3(0.0f);
-
-                material.refractionProbability = 1.0f;
-                material.absorbance = glm::vec3(0.1f);
-                material.refractionRoughness = 0.0f;
-
-                material.reflectionProbability = 0.0f;
-                material.reflectionRoughness = 0.0f;
-
+                bool updateGPUData = object.OnImGui();
                 if (updateGPUData) {
                     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
                     glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) + (currentSelectedObjectIndex) * sizeof(OpenGL::Sphere), sizeof(OpenGL::Sphere), &object);
@@ -948,18 +886,27 @@ int main() {
 
                     refreshRenderTargets = true;
                 }
-
-                ImGui::PopStyleColor();
             }
             else if (aabbSelected) {
                 OpenGL::AABB& object = aabbs[currentSelectedObjectIndex];
+
+                if (focusOnClick) {
+                    focusDistance = glm::distance(glm::vec3(object.position), cameraPosition);
+                }
+
+                bool updateGPUData = object.OnImGui();
+                if (updateGPUData) {
+                    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+                    glBufferSubData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) + numSpheres * sizeof(OpenGL::Sphere) + sizeof(glm::vec4) + currentSelectedObjectIndex * sizeof(OpenGL::AABB), sizeof(OpenGL::AABB), &object);
+                    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+                    refreshRenderTargets = true;
+                }
             }
             else {
                 // No object currently selected.
                 ImGui::PushStyleColor(ImGuiCol_Text, 0xff999999);
-
                 ImGui::Text("No object selected.");
-
                 ImGui::PopStyleColor();
             }
         }
