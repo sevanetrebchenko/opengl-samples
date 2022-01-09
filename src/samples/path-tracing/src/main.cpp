@@ -150,6 +150,14 @@ int main() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
 
+    GLuint postProcessingFrame;
+    glGenTextures(1, &postProcessingFrame);
+    glBindTexture(GL_TEXTURE_2D, postProcessingFrame);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
     // Depth buffer.
     GLuint rbo;
     glGenRenderbuffers(1, &rbo);
@@ -163,6 +171,7 @@ int main() {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame1, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame2, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, postProcessingFrame, 0);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
@@ -609,6 +618,10 @@ int main() {
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
             glBindTexture(GL_TEXTURE_2D, 0);
 
+            glBindTexture(GL_TEXTURE_2D, postProcessingFrame);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
+            glBindTexture(GL_TEXTURE_2D, 0);
+
             glBindRenderbuffer(GL_RENDERBUFFER, rbo);
             glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
             glBindRenderbuffer(GL_RENDERBUFFER, 0);
@@ -621,6 +634,7 @@ int main() {
             glBindFramebuffer(GL_FRAMEBUFFER, fbo);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frame1, 0);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, frame2, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, postProcessingFrame, 0);
             glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
 
             if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
@@ -726,20 +740,191 @@ int main() {
             initialInput = true;
         }
 
-        // Update camera transformation matrices.
         bool isCameraDirty = camera.IsDirty();
+        glm::mat4 inverseProjectionMatrix = glm::inverse(camera.GetPerspectiveTransform());
+        glm::mat4 inverseViewMatrix = glm::inverse(camera.GetViewTransform());
+
+        static bool sphereSelected = false;
+        static bool aabbSelected = false;
+        static int index = -1;
+
+        // Mouse picking.
+        static int previousState = GLFW_RELEASE;
+        int newState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
+        if ((newState == GLFW_RELEASE && previousState == GLFW_PRESS) && !io.WantCaptureMouse) {
+            sphereSelected = false;
+            aabbSelected = false;
+            index = -1;
+
+            // Get ray that originates from the camera position in the rayDirection of the click.
+            glm::dvec2 clickPosition;
+            glfwGetCursorPos(window, &clickPosition.x, &clickPosition.y);
+
+            // https://antongerdelan.net/opengl/raycasting.html
+            // GLFW has (0, 0) in the top left, while OpenGL has (0, 0) in the bottom left.
+            // Convert screen coordinates [0:WIDTH, HEIGHT:0] to normalized device coordinates [-1:1, -1:1].
+            glm::vec2 ndc = glm::vec2(static_cast<float>(2.0f * clickPosition.x) / static_cast<float>(width) - 1.0f,
+                                      1.0f - static_cast<float>(2.0f * clickPosition.y) / static_cast<float>(height));
+
+            glm::vec3 rayOrigin = camera.GetPosition();
+
+            glm::vec3 rayDirection;
+            rayDirection = inverseProjectionMatrix * glm::vec4(ndc, -1.0f, 1.0f);
+            rayDirection = glm::vec4(glm::vec2(rayDirection), -1.0f, 0.0f);
+            rayDirection = glm::normalize(glm::vec3(inverseViewMatrix * glm::vec4(rayDirection, 0.0f)));
+
+            // Intersect with all scene objects, get the closest intersection.
+            float tMin = 0.001f;
+            float tMax = std::numeric_limits<float>::max();
+
+            // Intersect with all active spheres.
+            for (int i = 0; i < numActiveSpheres; ++i) {
+                OpenGL::Sphere& temp = spheres[i];
+
+                glm::vec3 sphereToRayOrigin = rayOrigin - temp.position;
+
+                // https://antongerdelan.net/opengl/raycasting.html
+                float b = dot(rayDirection, sphereToRayOrigin);
+                float c = dot(sphereToRayOrigin, sphereToRayOrigin) - (temp.radius * temp.radius);
+
+                float discriminant = b * b - c;
+                if (discriminant < 0.0) {
+                    // No real roots, no intersection.
+                    continue;
+                }
+
+                float sqrtDiscriminant = sqrt(discriminant);
+
+                float t1 = -b - sqrtDiscriminant;
+                float t2 = -b + sqrtDiscriminant;
+
+                if (t2 < 0.0) {
+                    // Ray exited behind the origin (sphere is behind the camera).
+                    continue;
+                }
+
+                // Bounds check.
+                float t = t1 < 0.0 ? t2 : t1;
+                if (t < tMin || t > tMax) {
+                    // Closer intersection has already been found.
+                    continue;
+                }
+
+                // Update bounds.
+                tMax = t;
+
+                sphereSelected = true;
+                aabbSelected = false;
+                index = i;
+            }
+
+            // Intersect with all active AABBs.
+//            for (int i = 0; i < numActiveAABBs; ++i) {
+//                OpenGL::AABB& temp = aabbs[i];
+//
+//                glm::vec3 minimum = temp.position - temp.dimensions;
+//                glm::vec3 maximum = temp.position + temp.dimensions;
+//
+//                // AABB-Ray intersection via the slab method.
+//                // https://gist.github.com/DomNomNom/46bb1ce47f68d255fd5d
+//                glm::vec3 slabMin = (minimum - rayOrigin) / rayDirection;
+//                glm::vec3 slabMax = (maximum - rayOrigin) / rayDirection;
+//                glm::vec3 t1 = min(slabMin, slabMax);
+//                glm::vec3 t2 = max(slabMin, slabMax);
+//
+//                float tNear = glm::max(glm::max(t1.x, t1.y), t1.z);
+//                float tFar = glm::min(glm::min(t2.x, t2.y), t2.z);
+//
+//                // Bounds check.
+//                float t = tNear < 0.0 ? tFar : tNear;
+//                if (t < tMin || t > tMax) {
+//                    // Closer intersection has already been found.
+//                    continue;
+//                }
+//
+//                // Update bounds.
+//                tMax = t;
+//
+//                aabbSelected = true;
+//                sphereSelected = false;
+//                index = i;
+//            }
+        }
+
+        previousState = newState;
+
+        bool receivedImGuiInput = false;
+
+        if (ImGui::Begin("Scene Objects")) {
+            if (sphereSelected) {
+                OpenGL::Sphere& object = spheres[index];
+
+                glm::vec3 position = object.position;
+                float radius = object.radius;
+
+                float distance = glm::distance(camera.GetPosition(), position);
+
+                ImGui::PushStyleColor(ImGuiCol_Text, 0xff999999);
+
+                ImGui::Text("Distance to sphere: %f", distance);
+                ImGui::Separator();
+
+                // Object properties.
+                bool objectPropertiesChanged = false;
+
+                ImGui::Text("Position:");
+                if (ImGui::DragFloat3("##position", &position.x, -20.0f, 20.0f)) {
+                    object.position = position;
+                    objectPropertiesChanged = true;
+
+                    receivedImGuiInput = true;
+                }
+
+                ImGui::Text("Radius:");
+                if (ImGui::SliderFloat("##radius", &radius, 0.001f, 20.0f)) {
+                    object.radius = radius;
+                    objectPropertiesChanged = true;
+
+                    receivedImGuiInput = true;
+                }
+
+                ImGui::Separator();
+
+                // Update data in SSBO.
+                if (objectPropertiesChanged) {
+                    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+                    glBufferSubData(GL_SHADER_STORAGE_BUFFER, index * sizeof(OpenGL::Sphere), sizeof(OpenGL::Sphere), &object);
+                    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+                }
+
+                ImGui::PopStyleColor();
+            }
+            else if (aabbSelected) {
+                OpenGL::AABB& object = aabbs[index];
+            }
+            else {
+                // No object currently selected.
+                ImGui::PushStyleColor(ImGuiCol_Text, 0xff999999);
+
+                ImGui::Text("No object selected.");
+
+                ImGui::PopStyleColor();
+            }
+        }
+        ImGui::End();
+
+        // Update camera transformation matrices.
         if (isCameraDirty) {
             int offset = 0;
 
             glBindBuffer(GL_UNIFORM_BUFFER, ubo);
 
-            // Calling any Get...() function recalculates all matrices.
             // Inverse projection matrix.
-            glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::mat4), glm::value_ptr(glm::inverse(camera.GetPerspectiveTransform())));
+            glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::mat4), glm::value_ptr(inverseProjectionMatrix));
             offset += sizeof(glm::mat4);
 
             // Inverse view matrix.
-            glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::mat4), glm::value_ptr(glm::inverse(camera.GetViewTransform())));
+            glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::mat4), glm::value_ptr(inverseViewMatrix));
             offset += sizeof(glm::mat4);
 
             glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), glm::value_ptr(camera.GetPosition()));
@@ -747,14 +932,22 @@ int main() {
             glBindBuffer(GL_UNIFORM_BUFFER, 0);
         }
 
-        bool receivedImGuiInput = false;
-
         // Sample overview and statistics.
         if (ImGui::Begin("Sample Overview")) {
             ImGui::PushStyleColor(ImGuiCol_Text, 0xff999999);
 
             ImGui::Text("Render time:");
             ImGui::Text("%.3f ms/frame (%.1f FPS)", dt * 1000.0f, 1.0f / dt);
+
+            if (ImGui::Button("Take Screenshot")) {
+                static std::string outputDirectory = "src/samples/path-tracing/data/artifacts";
+                if (!std::filesystem::exists(outputDirectory)) {
+                    // Create output directory if it doesn't exist.
+                    std::filesystem::create_directory(outputDirectory);
+                }
+
+                // Save most recently rendered-to FBO render target.
+            }
 
             ImGui::PopStyleColor();
         }
@@ -838,11 +1031,13 @@ int main() {
         GLuint previousFrameImage = previousFrameIndex == 0 ? frame1 : frame2;
         GLuint currentFrameImage = currentFrameIndex == 0 ? frame1 : frame2;
 
-        // For the best visual clarity, denoising textures need to be reset when anything in the scene configuration changes.
+        // For the best visual clarity, de-noising textures need to be reset when anything in the scene configuration changes.
         if (cameraPositionChanged || cameraOrientationChanged || receivedImGuiInput) {
             glBindTexture(GL_TEXTURE_2D, previousFrameImage);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, blankTexture.data());
             glBindTexture(GL_TEXTURE_2D, 0);
+
+            frameCounter = 0;
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
@@ -894,8 +1089,7 @@ int main() {
 
         glfwSwapBuffers(window);
 
-        ++frameCounter;
-        frameCounter %= INT_MAX;
+        ++frameCounter %= INT_MAX;
 
         current = (float)glfwGetTime();
         dt = current - previous;

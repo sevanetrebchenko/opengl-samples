@@ -143,7 +143,8 @@ vec3 GenerateRandomDirection(inout uint rngState, vec3 n) {
 
 // Returns a ray in world space based on normalized screen-space coordinates.
 Ray GetWorldSpaceRay(vec2 ndc) {
-    vec4 direction = globalData.inverseProjectionMatrix * vec4(ndc, -1.0, 0.0);
+    // https://antongerdelan.net/opengl/raycasting.html
+    vec4 direction = globalData.inverseProjectionMatrix * vec4(ndc, -1.0, 1.0);
     direction.zw = vec2(-1.0, 0.0);
     return Ray(globalData.cameraPosition, normalize(globalData.inverseViewMatrix * direction).xyz);
 }
@@ -439,7 +440,7 @@ void main() {
         vec2 subPixelOffset = vec2(RandomFloat(rngState, 0.0, 1.0), RandomFloat(rngState, 0.0, 1.0)) - 0.5;
         vec2 ndc = (gl_FragCoord.xy + subPixelOffset) / resolution * 2.0 - 1.0;
 
-        Ray ray = GetWorldSpaceRay(ndc); // Ray
+        Ray ray = GetWorldSpaceRay(ndc);
 
         // Everything in the virtual film plane 'focusDistance' away from the camera eye position is in perfect focus.
         vec3 focalPoint = ray.origin + ray.direction * focusDistance;
