@@ -826,28 +826,57 @@ int main() {
             for (int i = 0; i < numActiveAABBs; ++i) {
                 OpenGL::AABB& temp = aabbs[i];
 
-                // https://medium.com/@bromanz/another-view-on-the-classic-ray-aabb-intersection-algorithm-for-bvh-traversal-41125138b525
-                glm::vec3 inverseRayDirection = glm::vec3(1.0f) / rayDirection;
-
                 glm::vec3 minimum = temp.position - temp.dimensions;
                 glm::vec3 maximum = temp.position + temp.dimensions;
 
-                glm::vec3 t0s = (minimum - rayOrigin) * inverseRayDirection;
-                glm::vec3 t1s = (maximum - rayOrigin) * inverseRayDirection;
+                // Taken from Real Time Collision Detection, Chapter 5.
+                float currentTMin = 0.0f;
+                float currentTMax = std::numeric_limits<float>::max();
 
-                glm::vec3 tMinimum = min(t0s, t1s);
-                glm::vec3 tMaximum = max(t0s, t1s);
+                bool invalid = false;
 
-                tMin = glm::max(tMin, glm::max(tMinimum[0], glm::max(tMinimum[1], tMinimum[2])));
-                tMax = glm::min(tMax, glm::min(tMaximum[0], glm::min(tMaximum[1], tMaximum[2])));
+                for (int axis = 0; axis < 3; ++axis) {
+                    if (glm::abs(rayDirection[axis]) < std::numeric_limits<float>::epsilon()) {
+                        // Ray is parallel to the slab, no intersection can happen unless the origin is within the bounds of the slab.
+                        if (rayOrigin[axis] < minimum[axis] || rayOrigin[axis] > maximum[axis]) {
+                            invalid = true;
+                            break;
+                        }
+                    }
+                    else {
+                        // Compute times at which ray enters and leaves the slab.
+                        float inverseDirection = 1.0f / rayDirection[axis];
+                        float t1 = (minimum[axis] - rayOrigin[axis]) * inverseDirection;
+                        float t2 = (maximum[axis] - rayOrigin[axis]) * inverseDirection;
 
-                // tMin >= tMax means no intersection.
-                if (tMin > tMax || glm::abs(tMax - tMin) < std::numeric_limits<float>::epsilon()) {
+                        // Make t1 be the intersection time with the near plane, t2 be the intersection time with the far plane.
+                        if (t1 > t2) {
+                            std::swap(t1, t2);
+                        }
+
+                        currentTMin = glm::max(currentTMin, t1);
+                        currentTMax = glm::min(currentTMax, t2);
+
+                        if (currentTMin > currentTMax) {
+                            invalid = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (invalid) {
+                    continue;
+                }
+
+                // Intersection time is currentTMin.
+                // Bounds check.
+                if (currentTMin < tMin || currentTMin > tMax) {
+                    // Closer intersection has already been found.
                     continue;
                 }
 
                 // Update bounds.
-                tMax = tMax;
+                tMax = currentTMin;
 
                 aabbSelected = true;
                 sphereSelected = false;
