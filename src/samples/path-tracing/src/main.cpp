@@ -298,6 +298,7 @@ int main() {
             material.ior = 1.1f;
 
             material.emissive = glm::vec3(0.0f);
+            material.emissiveStrength = 0.0f;
 
             material.refractionProbability = 0.98f;
             material.absorbance = glm::vec3(0.0f);
@@ -332,6 +333,7 @@ int main() {
             material.ior = 1.0f;
 
             material.emissive = glm::vec3(0.0f);
+            material.emissiveStrength = 0.0f;
 
             material.refractionProbability = 0.0f;
             material.absorbance = glm::vec3(0.0f);
@@ -356,6 +358,7 @@ int main() {
             material.ior = 1.52f; // Glass.
 
             material.emissive = glm::vec3(0.0f);
+            material.emissiveStrength = 0.0f;
 
             material.refractionProbability = 1.0f;
             material.absorbance = glm::vec3(0.1f);
@@ -380,6 +383,7 @@ int main() {
             material.ior = 1.0f;
 
             material.emissive = glm::vec3(0.0f);
+            material.emissiveStrength = 0.0f;
 
             material.refractionProbability = 0.0f;
             material.absorbance = glm::vec3(0.0f);
@@ -404,6 +408,7 @@ int main() {
             material.ior = 1.0f;
 
             material.emissive = glm::vec3(0.0f);
+            material.emissiveStrength = 0.0f;
 
             material.refractionProbability = 0.0f;
             material.absorbance = glm::vec3(0.0f);
@@ -428,6 +433,7 @@ int main() {
             material.ior = 1.0f;
 
             material.emissive = glm::vec3(0.0f);
+            material.emissiveStrength = 0.0f;
 
             material.refractionProbability = 0.0f;
             material.absorbance = glm::vec3(0.0f);
@@ -452,6 +458,7 @@ int main() {
             material.ior = 1.52f; // Glass.
 
             material.emissive = glm::vec3(0.0f);
+            material.emissiveStrength = 0.0f;
 
             material.refractionProbability = 1.0f;
             material.absorbance = glm::vec3(0.1f);
@@ -1064,7 +1071,7 @@ int main() {
                 }
             }
 
-            ImGui::Checkbox("Focus Object on Click?", &focusOnClick);
+            ImGui::Checkbox("Focus Selected Object?", &focusOnClick);
 
             ImGui::PopStyleColor();
         }
