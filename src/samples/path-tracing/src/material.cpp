@@ -136,12 +136,12 @@ namespace OpenGL {
         }
 
         ImGui::Text("Refraction Roughness:");
-        float tempRefractionRoughness = refractionProbability;
+        float tempRefractionRoughness = refractionRoughness;
         if (ImGui::SliderFloat("##refractionRoughness", &tempRefractionRoughness, 0.0f, 1.0f)) {
             // Manual input can go outside the valid range.
             tempRefractionRoughness = glm::clamp(tempRefractionRoughness, 0.0f, 1.0f);
 
-            if (glm::abs(tempRefractionRoughness - refractionProbability) > std::numeric_limits<float>::epsilon()) {
+            if (glm::abs(tempRefractionRoughness - refractionRoughness) > std::numeric_limits<float>::epsilon()) {
                 refractionRoughness = tempRefractionRoughness;
                 updated = true;
             }

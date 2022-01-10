@@ -5,7 +5,6 @@
 #include "transform.h"
 #include "camera.h"
 #include "object_loader.h"
-#include "model.h"
 #include "primitives.h"
 
 int main() {
@@ -388,6 +387,7 @@ int main() {
             light.dimensions = glm::vec4(boxWidth / 6.0f, epsilon, boxDepth / 6.0f, 0.0f);
 
             OpenGL::Material& material = light.material;
+            material.emissive = glm::vec3(1.0f);
             material.emissiveStrength = 15.0f;
             material.reflectionProbability = 1.0f;
 
