@@ -91,12 +91,12 @@ int main() {
     // Initialize skybox.
     // https://learnopengl.com/Advanced-OpenGL/Cubemaps
     std::vector<std::string> textureFaces = {
-        "src/samples/path-tracing/assets/textures/skybox/pos_x.png",
-        "src/samples/path-tracing/assets/textures/skybox/neg_x.png",
-        "src/samples/path-tracing/assets/textures/skybox/pos_y.png",
-        "src/samples/path-tracing/assets/textures/skybox/neg_y.png",
-        "src/samples/path-tracing/assets/textures/skybox/pos_z.png",
-        "src/samples/path-tracing/assets/textures/skybox/neg_z.png"
+        "src/samples/path-tracing/assets/textures/skybox/water/pos_x.jpg",
+        "src/samples/path-tracing/assets/textures/skybox/water/neg_x.jpg",
+        "src/samples/path-tracing/assets/textures/skybox/water/pos_y.jpg",
+        "src/samples/path-tracing/assets/textures/skybox/water/neg_y.jpg",
+        "src/samples/path-tracing/assets/textures/skybox/water/pos_z.jpg",
+        "src/samples/path-tracing/assets/textures/skybox/water/neg_z.jpg"
     };
 
     GLuint skybox;
@@ -669,32 +669,32 @@ int main() {
         const glm::vec3& cameraForwardVector = camera.GetForwardVector();
         const glm::vec3& cameraUpVector = camera.GetUpVector();
 
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS && !io.WantCaptureKeyboard) {
             camera.SetPosition(cameraPosition + cameraSpeed * cameraForwardVector * dt);
             refreshRenderTargets = true;
         }
 
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS && !io.WantCaptureKeyboard) {
             camera.SetPosition(cameraPosition - cameraSpeed * cameraForwardVector * dt);
             refreshRenderTargets = true;
         }
 
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS && !io.WantCaptureKeyboard) {
             camera.SetPosition(cameraPosition - glm::normalize(glm::cross(cameraForwardVector, cameraUpVector)) * cameraSpeed * dt);
             refreshRenderTargets = true;
         }
 
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS && !io.WantCaptureKeyboard) {
             camera.SetPosition(cameraPosition + glm::normalize(glm::cross(cameraForwardVector, cameraUpVector)) * cameraSpeed * dt);
             refreshRenderTargets = true;
         }
 
-        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS && !io.WantCaptureKeyboard) {
             camera.SetPosition(cameraPosition + cameraSpeed * cameraUpVector * dt);
             refreshRenderTargets = true;
         }
 
-        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
+        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS && !io.WantCaptureKeyboard) {
             camera.SetPosition(cameraPosition - cameraSpeed * cameraUpVector * dt);
             refreshRenderTargets = true;
         }
@@ -974,8 +974,11 @@ int main() {
             ImGui::Text("Render time:");
             ImGui::Text("%.3f ms/frame (%.1f FPS)", dt * 1000.0f, 1.0f / dt);
 
+            static char outputFilename[256] = { "result" };
+
             if (ImGui::Button("Take Screenshot")) {
                 static std::string outputDirectory = "src/samples/path-tracing/data/artifacts";
+
                 if (!std::filesystem::exists(outputDirectory)) {
                     // Create output directory if it doesn't exist.
                     std::filesystem::create_directory(outputDirectory);
@@ -991,9 +994,12 @@ int main() {
                 glBindTexture(GL_TEXTURE_2D, 0);
 
                 stbi_flip_vertically_on_write(true);
-                stbi_write_png("src/samples/path-tracing/data/artifacts/image.png", width, height, channels, pixels.data(), 0);
-                stbi_write_jpg("src/samples/path-tracing/data/artifacts/image.jpg", width, height, channels, pixels.data(), 100);
+                stbi_write_png(std::string("src/samples/path-tracing/data/artifacts/" + std::string(outputFilename) + ".png").c_str(), width, height, channels, pixels.data(), 0);
+                stbi_write_jpg(std::string("src/samples/path-tracing/data/artifacts/" + std::string(outputFilename) + ".jpg").c_str(), width, height, channels, pixels.data(), 100);
             }
+
+            ImGui::Text("Filename:");
+            ImGui::InputText("##outputFilename", outputFilename, 256);
 
             ImGui::PopStyleColor();
         }
