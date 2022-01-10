@@ -4,6 +4,8 @@
 namespace OpenGL {
 
     struct alignas(16) Material {
+        Material();
+
         // Returns whether material data was changed.
         [[nodiscard]] bool OnImGui();
 

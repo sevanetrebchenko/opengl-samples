@@ -4,6 +4,18 @@
 
 namespace OpenGL {
 
+    Material::Material() : albedo(glm::vec3(0.0f)),
+                           ior(1.0f),
+                           emissive(glm::vec3(0.0f)),
+                           emissiveStrength(0.0f),
+                           absorbance(glm::vec3(0.0f)),
+                           refractionProbability(0.0f),
+                           refractionRoughness(0.0f),
+                           reflectionProbability(0.0f),
+                           reflectionRoughness(0.0f)
+                           {
+    }
+
     bool Material::OnImGui() {
         bool updated = false;
 

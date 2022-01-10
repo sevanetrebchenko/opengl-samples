@@ -5,7 +5,6 @@
 #include "transform.h"
 #include "camera.h"
 #include "object_loader.h"
-#include "triangle.h"
 #include "model.h"
 #include "primitives.h"
 
@@ -224,16 +223,7 @@ int main() {
 
                 // Configure material properties.
                 OpenGL::Material& material = sphere.material;
-
                 material.albedo = glm::vec3(1.0f);
-                material.ior = 1.0f;
-
-                material.emissive = glm::vec3(0.0f);
-
-                material.refractionProbability = 0.0f;
-                material.absorbance = glm::vec3(0.0f);
-                material.refractionRoughness = 0.0f;
-
                 material.reflectionProbability = static_cast<float>(side - 1 - x) / (static_cast<float>(side - 1));
                 material.reflectionRoughness = static_cast<float>(y) / (static_cast<float>(side - 1));
 
@@ -259,18 +249,11 @@ int main() {
 
             // Configure material properties.
             OpenGL::Material& material = sphere.material;
-
             material.albedo = glm::vec3(0.90f, 0.25f, 0.25f);
             material.ior = 1.05f;
-
-            material.emissive = glm::vec3(0.0f);
-
             material.refractionProbability = 0.98f;
             material.absorbance = glm::vec3(1.0f, 2.0f, 3.0f) * (static_cast<float>(i) / static_cast<float>(side));
-            material.refractionRoughness = 0.0f;
-
             material.reflectionProbability = 0.02f;
-            material.reflectionRoughness = 0.0f;
 
             ++numActiveSpheres;
         }
@@ -293,17 +276,9 @@ int main() {
 
             // Configure material properties.
             OpenGL::Material& material = sphere.material;
-
-            material.albedo = glm::vec3(1.0f);
             material.ior = 1.1f;
-
-            material.emissive = glm::vec3(0.0f);
-            material.emissiveStrength = 0.0f;
-
             material.refractionProbability = 0.98f;
-            material.absorbance = glm::vec3(0.0f);
             material.refractionRoughness = (static_cast<float>(side - 1 - i) / static_cast<float>(side));
-
             material.reflectionProbability = 0.02f;
             material.reflectionRoughness = (static_cast<float>(i) / static_cast<float>(side));
 
@@ -323,22 +298,11 @@ int main() {
         // Right wall (green).
         {
             OpenGL::AABB& wall = aabbs[index++];
-
             wall.position = glm::vec4(boxWidth / 2.0f, 0.0f, 0.0f, 1.0f);
             wall.dimensions = glm::vec4(epsilon, boxHeight / 2.0f + epsilon, boxDepth / 2.0f + epsilon, 0.0f);
 
             OpenGL::Material& material = wall.material;
-
             material.albedo = glm::vec3(0.37f, 0.67f, 0.37f);
-            material.ior = 1.0f;
-
-            material.emissive = glm::vec3(0.0f);
-            material.emissiveStrength = 0.0f;
-
-            material.refractionProbability = 0.0f;
-            material.absorbance = glm::vec3(0.0f);
-            material.refractionRoughness = 0.0f;
-
             material.reflectionProbability = 1.0f;
             material.reflectionRoughness = 0.6f;
 
@@ -348,24 +312,14 @@ int main() {
         // Left wall (transparent).
         {
             OpenGL::AABB& wall = aabbs[index++];
-
             wall.position = glm::vec4(-boxWidth / 2.0f, 0.0f, 0.0f, 1.0f);
             wall.dimensions = glm::vec4(epsilon, boxHeight / 2.0f + epsilon, boxDepth / 2.0f + epsilon, 0.0f);
 
             OpenGL::Material& material = wall.material;
-
             material.albedo = glm::vec3(1.0f);
             material.ior = 1.52f; // Glass.
-
-            material.emissive = glm::vec3(0.0f);
-            material.emissiveStrength = 0.0f;
-
             material.refractionProbability = 1.0f;
             material.absorbance = glm::vec3(0.1f);
-            material.refractionRoughness = 0.0f;
-
-            material.reflectionProbability = 0.0f;
-            material.reflectionRoughness = 0.0f;
 
             ++numActiveAABBs;
         }
@@ -373,22 +327,11 @@ int main() {
         // Back wall (blue).
         {
             OpenGL::AABB& wall = aabbs[index++];
-
             wall.position = glm::vec4(0.0f, 0.0f, boxDepth / 2.0f, 1.0f);
             wall.dimensions = glm::vec4(boxWidth / 2.0f + epsilon, boxHeight / 2.0f + epsilon, epsilon, 0.0f);
 
             OpenGL::Material& material = wall.material;
-
             material.albedo = glm::vec3(0.07f, 0.25f, 0.45f);
-            material.ior = 1.0f;
-
-            material.emissive = glm::vec3(0.0f);
-            material.emissiveStrength = 0.0f;
-
-            material.refractionProbability = 0.0f;
-            material.absorbance = glm::vec3(0.0f);
-            material.refractionRoughness = 0.0f;
-
             material.reflectionProbability = 1.0f;
             material.reflectionRoughness = 0.6f;
 
@@ -398,22 +341,11 @@ int main() {
         // Front wall (reflective).
         {
             OpenGL::AABB& wall = aabbs[index++];
-
             wall.position = glm::vec4(0.0f, 0.0f, -boxDepth / 2.0f, 1.0f);
             wall.dimensions = glm::vec4(boxWidth / 2.0f + epsilon, boxHeight / 2.0f + epsilon, epsilon, 0.0f);
 
             OpenGL::Material& material = wall.material;
-
-            material.albedo = glm::vec3(0.9453125f, 0.75390625f, 0.3046875f);
-            material.ior = 1.0f;
-
-            material.emissive = glm::vec3(0.0f);
-            material.emissiveStrength = 0.0f;
-
-            material.refractionProbability = 0.0f;
-            material.absorbance = glm::vec3(0.0f);
-            material.refractionRoughness = 0.0f;
-
+            material.albedo = glm::vec3(0.95f, 0.75f, 0.30f);
             material.reflectionProbability = 1.0f;
             material.reflectionRoughness = 0.25f;
 
@@ -428,17 +360,7 @@ int main() {
             wall.dimensions = glm::vec4(boxWidth / 2.0f + epsilon, epsilon, boxDepth / 2.0f + epsilon, 0.0f);
 
             OpenGL::Material& material = wall.material;
-
             material.albedo = glm::vec3(0.2f, 0.04f, 0.04f);
-            material.ior = 1.0f;
-
-            material.emissive = glm::vec3(0.0f);
-            material.emissiveStrength = 0.0f;
-
-            material.refractionProbability = 0.0f;
-            material.absorbance = glm::vec3(0.0f);
-            material.refractionRoughness = 0.0f;
-
             material.reflectionProbability = 1.0f;
             material.reflectionRoughness = 0.6f;
 
@@ -448,24 +370,13 @@ int main() {
         // Ceiling (transparent).
         {
             OpenGL::AABB& wall = aabbs[index++];
-
             wall.position = glm::vec4(0.0f, boxHeight / 2.0f, 0.0f, 1.0f);
             wall.dimensions = glm::vec4(boxWidth / 2.0f + epsilon, epsilon, boxDepth / 2.0f + epsilon, 0.0f);
 
             OpenGL::Material& material = wall.material;
-
-            material.albedo = glm::vec3(1.0f);
             material.ior = 1.52f; // Glass.
-
-            material.emissive = glm::vec3(0.0f);
-            material.emissiveStrength = 0.0f;
-
             material.refractionProbability = 1.0f;
             material.absorbance = glm::vec3(0.1f);
-            material.refractionRoughness = 0.0f;
-
-            material.reflectionProbability = 0.0f;
-            material.reflectionRoughness = 0.0f;
 
             ++numActiveAABBs;
         }
@@ -473,24 +384,12 @@ int main() {
         // Light.
         {
             OpenGL::AABB& light = aabbs[index++];
-
             light.position = glm::vec4(0.0f, boxHeight / 2.0f - 2.0f, 0.0f, 1.0f);
             light.dimensions = glm::vec4(boxWidth / 6.0f, epsilon, boxDepth / 6.0f, 0.0f);
 
             OpenGL::Material& material = light.material;
-
-            material.albedo = glm::vec3(1.0f);
-            material.ior = 1.0f;
-
-            material.emissive = glm::vec3(1.0f);
             material.emissiveStrength = 15.0f;
-
-            material.refractionProbability = 0.0f;
-            material.absorbance = glm::vec3(0.0f);
-            material.refractionRoughness = 0.0f;
-
             material.reflectionProbability = 1.0f;
-            material.reflectionRoughness = 0.0f;
 
             ++numActiveAABBs;
         }
