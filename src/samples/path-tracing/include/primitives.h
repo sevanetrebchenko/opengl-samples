@@ -9,6 +9,8 @@ namespace OpenGL {
     // Structs padded to a size of glm::vec4 (16 bytes) for GPU buffer alignment.
 
     struct alignas(16) Sphere {
+        Sphere();
+
         // Returns whether sphere data was changed.
         [[nodiscard]] bool OnImGui();
 
@@ -19,6 +21,8 @@ namespace OpenGL {
     };
 
     struct alignas(16) AABB {
+        AABB();
+
         // Returns whether AABB data was changed.
         [[nodiscard]] bool OnImGui();
 

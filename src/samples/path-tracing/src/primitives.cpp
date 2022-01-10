@@ -4,6 +4,12 @@
 
 namespace OpenGL {
 
+    Sphere::Sphere() : position(glm::vec3(0.0f)),
+                       radius(0.0f),
+                       material()
+                       {
+    }
+
     bool Sphere::OnImGui() {
         bool updated = false;
 
@@ -40,6 +46,14 @@ namespace OpenGL {
         ImGui::PopStyleColor();
 
         return updated | material.OnImGui();
+    }
+
+
+
+    AABB::AABB() : position(glm::vec4(0.0f)),
+                   dimensions(glm::vec4(0.0f)),
+                   material()
+                   {
     }
 
     bool AABB::OnImGui() {
@@ -80,4 +94,5 @@ namespace OpenGL {
 
         return updated | material.OnImGui();
     }
+
 }
