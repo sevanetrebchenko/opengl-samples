@@ -977,7 +977,7 @@ int main() {
             static char outputFilename[256] = { "result" };
 
             if (ImGui::Button("Take Screenshot")) {
-                static std::string outputDirectory = "src/samples/path-tracing/data/artifacts";
+                static std::string outputDirectory = "src/samples/path-tracing/data/screenshots";
 
                 if (!std::filesystem::exists(outputDirectory)) {
                     // Create output directory if it doesn't exist.
@@ -994,8 +994,8 @@ int main() {
                 glBindTexture(GL_TEXTURE_2D, 0);
 
                 stbi_flip_vertically_on_write(true);
-                stbi_write_png(std::string("src/samples/path-tracing/data/artifacts/" + std::string(outputFilename) + ".png").c_str(), width, height, channels, pixels.data(), 0);
-                stbi_write_jpg(std::string("src/samples/path-tracing/data/artifacts/" + std::string(outputFilename) + ".jpg").c_str(), width, height, channels, pixels.data(), 100);
+                stbi_write_png(std::string(outputDirectory + std::string(outputFilename) + ".png").c_str(), width, height, channels, pixels.data(), 0);
+                stbi_write_jpg(std::string(outputDirectory + std::string(outputFilename) + ".jpg").c_str(), width, height, channels, pixels.data(), 100);
             }
 
             ImGui::Text("Filename:");
