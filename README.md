@@ -2,7 +2,7 @@
 A collection of visual effects, rendering techniques, and small samples to experiment with OpenGL. 
 Note that code simplicity is preferred, and abstractions over raw OpenGL calls are hence kept to a minimum.
    
-## External Dependencies
+## Dependencies
 - [Glad](https://glad.dav1d.de/)
 - [GLFW](https://github.com/glfw/glfw)
 - [GLM](https://github.com/g-truc/glm)
