@@ -2,6 +2,14 @@
 A collection of visual effects, rendering techniques, and small samples to experiment with OpenGL. 
 Note that code simplicity is preferred, and abstractions over raw OpenGL calls are hence kept to a minimum.
    
+## External Dependencies
+- [Glad](https://glad.dav1d.de/)
+- [GLFW](https://github.com/glfw/glfw)
+- [GLM](https://github.com/g-truc/glm)
+- [Dear ImGui](https://github.com/ocornut/imgui)
+- [STB](https://github.com/nothings/stb) (`stb_image.h`, `stb_image_write.h`)
+- [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader)
+   
 ## Sample List
 | [GPU-Driven Particles](https://github.com/sevanetrebchenko/opengl-samples/tree/master/src/samples/particles) |
 | :---: |
