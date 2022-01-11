@@ -56,6 +56,10 @@ int main() {
     // Find imgui_layout.ini file inside 'data' subdirectory for this sample.
     bool foundIni = false;
 
+    if (!std::filesystem::exists("src/samples/path-tracing/data")) {
+        std::filesystem::create_directory("src/samples/path-tracing/data");
+    }
+
     for (const std::string& file : Utilities::GetFiles("src/samples/path-tracing/data")) {
         if (Utilities::GetAssetName(file) == "imgui_layout" && Utilities::GetAssetExtension(file) == "ini") {
             foundIni = true;
@@ -876,7 +880,7 @@ int main() {
             static char outputFilename[256] = { "result" };
 
             if (ImGui::Button("Take Screenshot")) {
-                static std::string outputDirectory = "src/samples/path-tracing/data/screenshots";
+                static std::string outputDirectory = "src/samples/path-tracing/data/screenshots/";
 
                 if (!std::filesystem::exists(outputDirectory)) {
                     // Create output directory if it doesn't exist.
