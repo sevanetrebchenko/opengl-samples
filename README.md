@@ -13,7 +13,7 @@ Note that code simplicity is preferred, and abstractions over raw OpenGL calls a
 ## Sample List
 | [GPU-Driven Particles](https://github.com/sevanetrebchenko/opengl-samples/tree/master/src/samples/particles) |
 | :---: |
-| ![Particles]() <br> A simulation of 20+ million particles based on simple Newtonian dynamics on the GPU. |
+| ![Particles](https://github.com/sevanetrebchenko/opengl-samples/blob/master/src/samples/particles/data/screenshots/particles6.jpg) <br> A simulation of 20+ million particles based on simple Newtonian dynamics on the GPU. |
 
 | [GLSL Path Tracing](https://github.com/sevanetrebchenko/opengl-samples/tree/master/src/samples/path-tracing) |
 | :---: |
